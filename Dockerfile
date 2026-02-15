@@ -1,4 +1,3 @@
-# ---------- Builder ----------
 FROM node:22-alpine AS builder
 
 WORKDIR /app
@@ -9,21 +8,14 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-RUN apt-get update && apt-get install -y curl
-
-
-# ---------- Runner ----------
-FROM node:22-alpine AS runner
+# Production image
+FROM node:22-alpine
 
 WORKDIR /app
 
-ENV NODE_ENV=production
+RUN apk add --no-cache curl
 
-# Copy necessary files
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/public ./public
+COPY --from=builder /app ./
 
 EXPOSE 3000
 
