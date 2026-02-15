@@ -1,30 +1,27 @@
+# ---------- Builder ----------
 FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
 COPY package.json package-lock.json ./
-
-# Install dependencies
 RUN npm ci
 
-# Copy source code
 COPY . .
-
-# Build application
 RUN npm run build
 
-# Production image
-FROM nginx:alpine
+# ---------- Runner ----------
+FROM node:22-alpine AS runner
 
-# Copy built files
-COPY --from=builder /app/.next /app/.next
-COPY --from=builder /app/public /app/public
-COPY --from=builder /app/package.json /app/
+WORKDIR /app
 
-# Copy nginx config
-COPY nginx.conf /etc/nginx/nginx.conf
+ENV NODE_ENV=production
+
+# Copy necessary files
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/public ./public
 
 EXPOSE 3000
 
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["npm", "start"]
