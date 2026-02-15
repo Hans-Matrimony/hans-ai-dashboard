@@ -9,6 +9,9 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
+RUN apt-get update && apt-get install -y curl
+
+
 # ---------- Runner ----------
 FROM node:22-alpine AS runner
 
