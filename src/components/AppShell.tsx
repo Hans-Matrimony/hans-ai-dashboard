@@ -12,10 +12,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
             <main className="md:ml-64 min-h-screen flex flex-col">
                 {/* Mobile top header bar */}
-                <div className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm sticky top-0 z-20">
+                <div className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-slate-200 bg-white/90 backdrop-blur-sm sticky top-0 z-20">
                     <button
                         onClick={() => setSidebarOpen(true)}
-                        className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                        className="p-2 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
                         aria-label="Open menu"
                     >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -26,7 +26,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
                             <span className="text-white font-bold text-sm">H</span>
                         </div>
-                        <span className="text-white font-semibold text-sm">Hans AI</span>
+                        <span className="text-slate-900 font-semibold text-sm">Hans AI</span>
                     </div>
                 </div>
 
