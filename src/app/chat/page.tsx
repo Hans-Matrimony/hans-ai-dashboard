@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { cn } from '@/lib/utils';
 
 interface Message {
     id: string;
@@ -169,38 +170,41 @@ export default function ChatPage() {
     };
 
     return (
-        <div className="flex flex-col h-screen bg-slate-950">
+        <div className="flex flex-col h-screen bg-[#e5ddd5] selection:bg-indigo-100">
             {/* Header */}
-            <div className="border-b border-slate-800 bg-slate-900/50 backdrop-blur-sm px-4 py-3 md:px-6 md:py-4">
+            <div className="border-b border-slate-200 bg-[#f0f2f5] px-4 py-3 md:px-6 md:py-3 shadow-sm z-10">
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-md">
                         <span className="text-white text-sm font-bold">AS</span>
                     </div>
                     <div>
-                        <h2 className="text-white font-semibold">Acharya Sharma</h2>
-                        <p className="text-slate-500 text-xs">Vedic Astrologer &middot; Online</p>
+                        <h2 className="text-slate-900 font-semibold leading-tight">Acharya Sharma</h2>
+                        <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <p className="text-slate-600 text-xs">Vedic Astrologer &middot; Online</p>
+                        </div>
                     </div>
                 </div>
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-3 py-4 space-y-4 md:px-6 md:py-6 md:space-y-6">
+            <div className="flex-1 overflow-y-auto px-3 py-4 space-y-3 md:px-6 md:py-6 md:space-y-4">
                 {messages.length === 0 && (
                     <div className="flex items-center justify-center h-full">
-                        <div className="text-center max-w-md">
-                            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-500/20 to-orange-600/20 flex items-center justify-center mx-auto mb-4">
-                                <span className="text-3xl">🪷</span>
+                        <div className="text-center max-w-md bg-white/60 backdrop-blur-md p-8 rounded-3xl shadow-xl shadow-black/5 border border-white/50">
+                            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-amber-500/10 to-orange-600/10 flex items-center justify-center mx-auto mb-6">
+                                <span className="text-4xl">🪷</span>
                             </div>
-                            <h3 className="text-xl font-semibold text-white mb-2">Namaste!</h3>
-                            <p className="text-slate-400 text-sm leading-relaxed">
+                            <h3 className="text-2xl font-bold text-slate-900 mb-3">Namaste!</h3>
+                            <p className="text-slate-600 text-sm leading-relaxed mb-8">
                                 Start a conversation with Acharya Sharma. Ask about your Kundli, career, marriage, or any Jyotish question.
                             </p>
-                            <div className="mt-6 flex flex-wrap gap-2 justify-center">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 {['Meri Kundli dekho', 'Career mein kya hoga?', 'Shaadi kab hogi?', 'Health prediction'].map((q) => (
                                     <button
                                         key={q}
                                         onClick={() => { setInput(q); inputRef.current?.focus(); }}
-                                        className="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-full border border-slate-700 transition-colors"
+                                        className="px-4 py-2 text-xs bg-white hover:bg-slate-50 text-slate-700 rounded-xl border border-slate-200 shadow-sm transition-all text-left"
                                     >
                                         {q}
                                     </button>
@@ -215,29 +219,30 @@ export default function ChatPage() {
                         key={msg.id}
                         className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
-                        <div className={`max-w-[85%] md:max-w-[70%] ${msg.role === 'user' ? 'order-2' : ''}`}>
-                            {msg.role === 'assistant' && (
-                                <div className="flex items-center gap-2 mb-1.5">
-                                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
-                                        <span className="text-white text-[10px] font-bold">AS</span>
-                                    </div>
-                                    <span className="text-xs text-slate-500">Acharya Sharma</span>
-                                </div>
-                            )}
+                        <div className={`max-w-[85%] md:max-w-[70%] relative ${msg.role === 'user' ? 'ml-12' : 'mr-12'}`}>
                             <div
-                                className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.role === 'user'
-                                    ? 'bg-indigo-600 text-white rounded-br-md'
-                                    : 'bg-slate-800 text-slate-200 rounded-bl-md border border-slate-700'
-                                    }`}
+                                className={cn(
+                                    'px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm relative',
+                                    msg.role === 'user'
+                                        ? 'bg-[#dcf8c6] text-slate-800 rounded-tr-none'
+                                        : 'bg-white text-slate-800 rounded-tl-none'
+                                )}
                             >
                                 <p className="whitespace-pre-wrap">{msg.content}</p>
                                 {msg.isStreaming && (
-                                    <span className="inline-block w-1.5 h-4 bg-indigo-400 animate-pulse ml-0.5 rounded-sm" />
+                                    <span className="inline-block w-1.5 h-4 bg-indigo-400 animate-pulse ml-0.5 rounded-sm align-middle" />
                                 )}
+                                <div className={`flex items-center justify-end gap-1 mt-1 -mb-0.5 select-none`}>
+                                    <span className="text-[10px] text-slate-500">
+                                        {formatTime(msg.timestamp)}
+                                    </span>
+                                    {msg.role === 'user' && (
+                                        <svg className="w-3.5 h-3.5 text-indigo-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                            <polyline points="20 6 9 17 4 12" />
+                                        </svg>
+                                    )}
+                                </div>
                             </div>
-                            <p className={`text-[10px] text-slate-600 mt-1 ${msg.role === 'user' ? 'text-right' : ''}`}>
-                                {formatTime(msg.timestamp)}
-                            </p>
                         </div>
                     </div>
                 ))}
@@ -245,8 +250,8 @@ export default function ChatPage() {
             </div>
 
             {/* Input */}
-            <div className="border-t border-slate-800 bg-slate-900/50 backdrop-blur-sm p-3 md:p-4">
-                <div className="flex items-end gap-3 max-w-4xl mx-auto">
+            <div className="bg-[#f0f2f5] p-3 md:p-4 border-t border-slate-200">
+                <div className="flex items-end gap-3 max-w-5xl mx-auto">
                     <div className="flex-1 relative">
                         <textarea
                             ref={inputRef}
@@ -255,7 +260,7 @@ export default function ChatPage() {
                             onKeyDown={handleKeyDown}
                             placeholder="Type your message..."
                             rows={1}
-                            className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                            className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-sm text-slate-900 placeholder-slate-400 resize-none focus:outline-none focus:ring-1 focus:ring-slate-300 transition-all shadow-sm"
                             style={{ maxHeight: '120px' }}
                             onInput={(e) => {
                                 const target = e.target as HTMLTextAreaElement;
@@ -267,7 +272,7 @@ export default function ChatPage() {
                     <button
                         onClick={sendMessage}
                         disabled={!input.trim() || isLoading}
-                        className="flex items-center justify-center w-11 h-11 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 text-white transition-all duration-200 flex-shrink-0"
+                        className="flex items-center justify-center w-11 h-11 rounded-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-300 disabled:text-slate-400 text-white transition-all duration-200 flex-shrink-0 shadow-md transform hover:scale-105 active:scale-95"
                     >
                         {isLoading ? (
                             <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -275,8 +280,8 @@ export default function ChatPage() {
                                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                             </svg>
                         ) : (
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                            <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
                             </svg>
                         )}
                     </button>
