@@ -214,38 +214,57 @@ export default function ChatPage() {
                     </div>
                 )}
 
-                {messages.map((msg) => (
-                    <div
-                        key={msg.id}
-                        className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
-                        <div className={`max-w-[85%] md:max-w-[70%] relative ${msg.role === 'user' ? 'ml-12' : 'mr-12'}`}>
-                            <div
-                                className={cn(
-                                    'px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm relative',
-                                    msg.role === 'user'
-                                        ? 'bg-[#dcf8c6] text-slate-800 rounded-tr-none'
-                                        : 'bg-white text-slate-800 rounded-tl-none'
-                                )}
-                            >
-                                <p className="whitespace-pre-wrap">{msg.content}</p>
-                                {msg.isStreaming && (
-                                    <span className="inline-block w-1.5 h-4 bg-indigo-400 animate-pulse ml-0.5 rounded-sm align-middle" />
-                                )}
-                                <div className={`flex items-center justify-end gap-1 mt-1 -mb-0.5 select-none`}>
-                                    <span className="text-[10px] text-slate-500">
-                                        {formatTime(msg.timestamp)}
-                                    </span>
-                                    {msg.role === 'user' && (
-                                        <svg className="w-3.5 h-3.5 text-indigo-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                            <polyline points="20 6 9 17 4 12" />
-                                        </svg>
-                                    )}
+                {messages.map((msg) => {
+                    const contentParts = msg.role === 'assistant'
+                        ? msg.content.split('\n\n').filter(p => p.trim() || msg.isStreaming)
+                        : [msg.content];
+
+                    return (
+                        <div
+                            key={msg.id}
+                            className={cn(
+                                "flex flex-col gap-1.5",
+                                msg.role === 'user' ? 'items-end' : 'items-start'
+                            )}
+                        >
+                            {contentParts.map((part, partIdx) => (
+                                <div
+                                    key={`${msg.id}-${partIdx}`}
+                                    className={`max-w-[85%] md:max-w-[70%] relative ${msg.role === 'user' ? 'ml-12' : 'mr-12'}`}
+                                >
+                                    <div
+                                        className={cn(
+                                            'px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm relative',
+                                            msg.role === 'user'
+                                                ? 'bg-[#dcf8c6] text-slate-800 rounded-tr-none'
+                                                : cn(
+                                                    'bg-white text-slate-800',
+                                                    partIdx === 0 ? 'rounded-tl-none' : ''
+                                                )
+                                        )}
+                                    >
+                                        <p className="whitespace-pre-wrap">{part}</p>
+                                        {msg.isStreaming && partIdx === contentParts.length - 1 && (
+                                            <span className="inline-block w-1.5 h-4 bg-indigo-400 animate-pulse ml-0.5 rounded-sm align-middle" />
+                                        )}
+                                        {partIdx === contentParts.length - 1 && (
+                                            <div className="flex items-center justify-end gap-1 mt-1 -mb-0.5 select-none">
+                                                <span className="text-[10px] text-slate-500">
+                                                    {formatTime(msg.timestamp)}
+                                                </span>
+                                                {msg.role === 'user' && (
+                                                    <svg className="w-3.5 h-3.5 text-indigo-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                                        <polyline points="20 6 9 17 4 12" />
+                                                    </svg>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
+                            ))}
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
                 <div ref={messagesEndRef} />
             </div>
 
