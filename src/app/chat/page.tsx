@@ -171,7 +171,7 @@ export default function ChatPage() {
     return (
         <div className="flex flex-col h-screen bg-slate-950">
             {/* Header */}
-            <div className="border-b border-slate-800 bg-slate-900/50 backdrop-blur-sm px-6 py-4">
+            <div className="border-b border-slate-800 bg-slate-900/50 backdrop-blur-sm px-4 py-3 md:px-6 md:py-4">
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg">
                         <span className="text-white text-sm font-bold">AS</span>
@@ -184,7 +184,7 @@ export default function ChatPage() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+            <div className="flex-1 overflow-y-auto px-3 py-4 space-y-4 md:px-6 md:py-6 md:space-y-6">
                 {messages.length === 0 && (
                     <div className="flex items-center justify-center h-full">
                         <div className="text-center max-w-md">
@@ -215,7 +215,7 @@ export default function ChatPage() {
                         key={msg.id}
                         className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
-                        <div className={`max-w-[70%] ${msg.role === 'user' ? 'order-2' : ''}`}>
+                        <div className={`max-w-[85%] md:max-w-[70%] ${msg.role === 'user' ? 'order-2' : ''}`}>
                             {msg.role === 'assistant' && (
                                 <div className="flex items-center gap-2 mb-1.5">
                                     <div className="w-6 h-6 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
@@ -245,7 +245,7 @@ export default function ChatPage() {
             </div>
 
             {/* Input */}
-            <div className="border-t border-slate-800 bg-slate-900/50 backdrop-blur-sm p-4">
+            <div className="border-t border-slate-800 bg-slate-900/50 backdrop-blur-sm p-3 md:p-4">
                 <div className="flex items-end gap-3 max-w-4xl mx-auto">
                     <div className="flex-1 relative">
                         <textarea

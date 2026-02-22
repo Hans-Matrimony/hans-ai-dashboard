@@ -99,7 +99,7 @@ export default function MemoryPage() {
     };
 
     return (
-        <div className="p-8 max-w-5xl">
+        <div className="p-4 md:p-8 max-w-5xl">
             <div className="mb-8">
                 <h1 className="text-2xl font-bold text-white">Memory Browser</h1>
                 <p className="text-slate-400 text-sm mt-1">Browse, search, and manage Mem0 memories by user</p>
@@ -125,8 +125,8 @@ export default function MemoryPage() {
                 <button
                     onClick={() => setActiveTab('browse')}
                     className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'browse'
-                            ? 'bg-indigo-600 text-white'
-                            : 'text-slate-400 hover:text-white'
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-slate-400 hover:text-white'
                         }`}
                 >
                     Browse All
@@ -134,8 +134,8 @@ export default function MemoryPage() {
                 <button
                     onClick={() => setActiveTab('search')}
                     className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'search'
-                            ? 'bg-indigo-600 text-white'
-                            : 'text-slate-400 hover:text-white'
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-slate-400 hover:text-white'
                         }`}
                 >
                     Semantic Search
@@ -165,7 +165,7 @@ export default function MemoryPage() {
 
             {/* Browse button */}
             {activeTab === 'browse' && (
-                <div className="flex gap-3 mb-6">
+                <div className="flex gap-3 mb-6 flex-wrap">
                     <button
                         onClick={fetchMemories}
                         disabled={!userId.trim() || isLoading}
@@ -212,7 +212,7 @@ export default function MemoryPage() {
                                                 Score: {(mem.metadata.score * 100).toFixed(1)}%
                                             </span>
                                         )}
-                                        <span className="text-xs text-slate-600 font-mono truncate max-w-[200px]">{mem.id}</span>
+                                        <span className="text-xs text-slate-600 font-mono break-all">{mem.id}</span>
                                     </div>
                                 </div>
                                 <button

@@ -19,7 +19,7 @@ export default function DashboardPage() {
     }, [apiUrl]);
 
     return (
-        <div className="p-8">
+        <div className="p-4 md:p-8">
             <div className="mb-8">
                 <h1 className="text-2xl font-bold text-white">Dashboard</h1>
                 <p className="text-slate-400 text-sm mt-1">Overview of your AI assistant system</p>
@@ -108,9 +108,9 @@ export default function DashboardPage() {
                         ['Qdrant', process.env.NEXT_PUBLIC_QDRANT_URL || 'http://localhost:6333'],
                         ['Framework', 'Next.js 14 + TypeScript'],
                     ].map(([label, value]) => (
-                        <div key={label} className="flex items-center justify-between px-5 py-3">
-                            <span className="text-sm text-slate-400">{label}</span>
-                            <span className="text-sm text-slate-300 font-mono">{value}</span>
+                        <div key={label} className="flex items-center justify-between gap-3 px-5 py-3">
+                            <span className="text-sm text-slate-400 shrink-0">{label}</span>
+                            <span className="text-sm text-slate-300 font-mono truncate text-right">{value}</span>
                         </div>
                     ))}
                 </div>

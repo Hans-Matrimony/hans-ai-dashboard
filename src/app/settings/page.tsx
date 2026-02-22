@@ -101,7 +101,7 @@ export default function SettingsPage() {
     };
 
     return (
-        <div className="p-8 max-w-4xl">
+        <div className="p-4 md:p-8 max-w-4xl">
             <div className="mb-8">
                 <h1 className="text-2xl font-bold text-white">Settings</h1>
                 <p className="text-slate-400 text-sm mt-1">System configuration and service status</p>
@@ -125,7 +125,7 @@ export default function SettingsPage() {
                             <div key={service.name} className="flex items-center justify-between px-5 py-4">
                                 <div>
                                     <p className="text-sm font-medium text-white">{service.name}</p>
-                                    <p className="text-xs text-slate-500 font-mono mt-0.5">{service.url}</p>
+                                    <p className="text-xs text-slate-500 font-mono mt-0.5 break-all">{service.url}</p>
                                     {service.note && (
                                         <p className="text-xs text-slate-600 mt-0.5">{service.note}</p>
                                     )}
@@ -148,12 +148,12 @@ export default function SettingsPage() {
                 <h2 className="text-lg font-semibold text-white mb-4">Agent Configuration</h2>
                 <div className="bg-slate-900 border border-slate-800 rounded-xl divide-y divide-slate-800">
                     {configItems.map((item) => (
-                        <div key={item.label} className="flex items-center justify-between px-5 py-3.5">
+                        <div key={item.label} className="flex items-start justify-between gap-3 px-5 py-3.5">
                             <div>
                                 <p className="text-sm text-slate-300">{item.label}</p>
                                 <p className="text-xs text-slate-600 mt-0.5">{item.desc}</p>
                             </div>
-                            <span className="text-sm text-white font-mono bg-slate-800 px-3 py-1 rounded-md">{item.value}</span>
+                            <span className="text-sm text-white font-mono bg-slate-800 px-3 py-1 rounded-md text-right break-all">{item.value}</span>
                         </div>
                     ))}
                 </div>
@@ -164,9 +164,9 @@ export default function SettingsPage() {
                 <h2 className="text-lg font-semibold text-white mb-4">Environment Variables</h2>
                 <div className="bg-slate-900 border border-slate-800 rounded-xl divide-y divide-slate-800">
                     {envVars.map((v) => (
-                        <div key={v.key} className="flex items-center justify-between px-5 py-3.5">
+                        <div key={v.key} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 px-5 py-3.5">
                             <span className="text-sm text-slate-400 font-mono">{v.key}</span>
-                            <span className="text-sm text-slate-300 font-mono">{v.value}</span>
+                            <span className="text-sm text-slate-300 font-mono break-all">{v.value}</span>
                         </div>
                     ))}
                 </div>
