@@ -17,6 +17,7 @@ export default function ChatPage() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [sessionId, setSessionId] = useState<string>('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -30,6 +31,14 @@ export default function ChatPage() {
 
     useEffect(() => {
         inputRef.current?.focus();
+
+        // Generate or retrieve a unique session ID for multitenancy
+        let storedId = localStorage.getItem('chat_session_id');
+        if (!storedId) {
+            storedId = `user-${Math.random().toString(36).substring(2, 11)}-${Date.now().toString(36)}`;
+            localStorage.setItem('chat_session_id', storedId);
+        }
+        setSessionId(storedId);
     }, []);
 
     const sendMessage = async () => {
@@ -67,7 +76,7 @@ export default function ChatPage() {
                     model: 'openclaw:astrologer',
                     input: trimmed,
                     stream: true,
-                    user: 'dashboard-user',
+                    user: sessionId || `user-${Date.now()}`,
                 }),
             });
 
