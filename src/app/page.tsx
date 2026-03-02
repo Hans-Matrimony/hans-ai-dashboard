@@ -29,6 +29,9 @@ export default function HomePage() {
               <Link href="/settings" className="text-sm font-semibold text-slate-600 hover:text-indigo-600 transition-colors">
                 Settings
               </Link>
+              <Link href="/chat-logs" className="text-sm font-semibold text-slate-600 hover:text-indigo-600 transition-colors">
+                Chat Logs
+              </Link>
             </nav>
           </div>
         </div>

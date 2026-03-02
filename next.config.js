@@ -19,6 +19,7 @@ const nextConfig = {
   async rewrites() {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
     const mem0Url = process.env.NEXT_PUBLIC_MEM0_URL || 'http://localhost:8002';
+    const mongoLoggerUrl = process.env.NEXT_PUBLIC_MONGO_LOGGER_URL || 'http://localhost:5000';
     return [
       {
         source: '/api/gateway/:path*',
@@ -27,6 +28,10 @@ const nextConfig = {
       {
         source: '/api/mem0/:path*',
         destination: `${mem0Url}/:path*`,
+      },
+      {
+        source: '/api/chat-logs/:path*',
+        destination: `${mongoLoggerUrl}/:path*`,
       },
     ];
   },
