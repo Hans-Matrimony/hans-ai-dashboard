@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 /* ──────── Types ──────── */
 interface Message {
@@ -66,6 +66,40 @@ function channelColor(ch: string) {
     return 'bg-slate-50 text-slate-600 border-slate-200';
 }
 
+function fmtDuration(ms: number) {
+    if (ms < 60000) return '<1m';
+    const mins = Math.floor(ms / 60000);
+    if (mins < 60) return `${mins}m`;
+    const hrs = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    if (hrs < 24) return remMins > 0 ? `${hrs}h ${remMins}m` : `${hrs}h`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d ${hrs % 24}h`;
+}
+
+/* ──────── Stop words for topic extraction ──────── */
+const STOP_WORDS = new Set([
+    'hi', 'hello', 'hey', 'ok', 'okay', 'yes', 'no', 'the', 'a', 'an', 'is',
+    'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do',
+    'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'shall',
+    'can', 'need', 'dare', 'ought', 'used', 'to', 'of', 'in', 'for', 'on',
+    'with', 'at', 'by', 'from', 'as', 'into', 'through', 'during', 'before',
+    'after', 'above', 'below', 'between', 'out', 'off', 'over', 'under',
+    'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where',
+    'why', 'how', 'all', 'each', 'every', 'both', 'few', 'more', 'most',
+    'other', 'some', 'such', 'only', 'own', 'same', 'so', 'than', 'too',
+    'very', 'just', 'because', 'but', 'and', 'or', 'if', 'while', 'that',
+    'what', 'which', 'who', 'whom', 'this', 'these', 'those', 'am', 'it',
+    'its', 'i', 'me', 'my', 'myself', 'we', 'our', 'you', 'your', 'he',
+    'him', 'his', 'she', 'her', 'they', 'them', 'their', 'not', 'nor',
+    'up', 'about', 'also', 'get', 'got', 'like', 'make', 'even', 'much',
+    'mera', 'meri', 'mere', 'hai', 'hain', 'ho', 'hoga', 'ka', 'ki', 'ke',
+    'ko', 'se', 'ne', 'par', 'pe', 'mein', 'ye', 'yeh', 'wo', 'woh', 'kya',
+    'kaise', 'kab', 'kaha', 'kaun', 'aur', 'ya', 'ya', 'nahi', 'nhi', 'na',
+    'bhi', 'toh', 'to', 'sir', 'ji', 'please', 'thank', 'thanks', 'hii',
+    'tell', 'know', 'want', 'batao', 'bataiye', 'bataye', 'haan', 'hmm',
+]);
+
 /* ──────── Main Page ──────── */
 export default function ChatLogsPage() {
     const [data, setData] = useState<ApiResponse | null>(null);
@@ -79,6 +113,29 @@ export default function ChatLogsPage() {
     // selection state
     const [selectedUser, setSelectedUser] = useState<UserDoc | null>(null);
     const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+
+    // analytics panel toggle
+    const [showAnalytics, setShowAnalytics] = useState(true);
+
+    // parallax collapse state: collapses header + analytics when scrolling in messages
+    const [collapsed, setCollapsed] = useState(false);
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const lastScrollTop = useRef(0);
+
+    const handleMessagesScroll = useCallback(() => {
+        const el = scrollRef.current;
+        if (!el) return;
+        const st = el.scrollTop;
+        // Collapse when scrolling down past 30px
+        if (st > 30 && st > lastScrollTop.current) {
+            setCollapsed(true);
+        }
+        // Expand when scrolling back to very top
+        if (st <= 5) {
+            setCollapsed(false);
+        }
+        lastScrollTop.current = st;
+    }, []);
 
     // fetch data
     useEffect(() => {
@@ -148,11 +205,110 @@ export default function ChatLogsPage() {
         return latest;
     }
 
+    /* ──────── Analytics Computations ──────── */
+    const analytics = useMemo(() => {
+        if (!data || !data.users.length) return null;
+
+        const users = data.users;
+        const allSessions = users.flatMap(u => u.sessions);
+        const allMessages = allSessions.flatMap(s => s.messages);
+        const userMessages = allMessages.filter(m => m.role === 'user');
+
+        // Total counts
+        const totalUsers = users.length;
+        const totalSessions = allSessions.length;
+        const totalMsgs = allMessages.length;
+
+        // Average session duration
+        let totalDurationMs = 0;
+        let validDurationCount = 0;
+        allSessions.forEach(s => {
+            const start = new Date(s.startTime).getTime();
+            const end = new Date(s.lastMessageTime).getTime();
+            if (!isNaN(start) && !isNaN(end) && end > start) {
+                totalDurationMs += (end - start);
+                validDurationCount++;
+            }
+        });
+        const avgDurationMs = validDurationCount > 0 ? totalDurationMs / validDurationCount : 0;
+
+        // Channel breakdown
+        const channelMap: Record<string, number> = {};
+        allSessions.forEach(s => {
+            const ch = s.channel || 'unknown';
+            channelMap[ch] = (channelMap[ch] || 0) + 1;
+        });
+        const channelBreakdown = Object.entries(channelMap)
+            .sort((a, b) => b[1] - a[1]);
+        const channelTotal = channelBreakdown.reduce((a, [, c]) => a + c, 0);
+
+        // Top active users (by message count)
+        const topUsers = users
+            .map(u => ({
+                userId: u.userId,
+                msgCount: u.sessions.reduce((a, s) => a + s.messages.length, 0),
+                sessionCount: u.sessions.length,
+                channel: u.sessions[0]?.channel || 'unknown',
+            }))
+            .sort((a, b) => b.msgCount - a.msgCount)
+            .slice(0, 5);
+
+        // Common topics: extract keywords from user messages
+        const wordFreq: Record<string, number> = {};
+        userMessages.forEach(m => {
+            const words = m.text
+                .replace(/\\n/g, ' ')
+                .toLowerCase()
+                .replace(/[^a-zA-Z0-9\u0900-\u097F\s]/g, '')
+                .split(/\s+/)
+                .filter(w => w.length > 2 && !STOP_WORDS.has(w));
+            words.forEach(w => {
+                wordFreq[w] = (wordFreq[w] || 0) + 1;
+            });
+        });
+        const topTopics = Object.entries(wordFreq)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 15);
+
+        return {
+            totalUsers,
+            totalSessions,
+            totalMsgs,
+            avgDurationMs,
+            channelBreakdown,
+            channelTotal,
+            topUsers,
+            topTopics,
+        };
+    }, [data]);
+
     /* ──────── Render ──────── */
     return (
-        <div className="h-screen flex flex-col overflow-hidden">
+        <div className="h-screen flex flex-col overflow-x-auto overflow-y-hidden">
+            {/* ── Compact restore bar (shown when collapsed) ── */}
+            {collapsed && (
+                <button
+                    onClick={() => setCollapsed(false)}
+                    className="shrink-0 flex items-center justify-center gap-2 px-4 py-1.5 bg-indigo-50 border-b border-indigo-100 text-indigo-600 text-xs font-semibold hover:bg-indigo-100 transition-all cursor-pointer"
+                >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                    Show header & analytics
+                </button>
+            )}
+
             {/* ── Header ── */}
-            <div className="shrink-0 p-4 md:p-6 pb-0">
+            <div
+                className="shrink-0 p-4 md:p-6 pb-0 transition-all duration-300 ease-in-out"
+                style={{
+                    maxHeight: collapsed ? '0px' : '200px',
+                    opacity: collapsed ? 0 : 1,
+                    overflow: 'hidden',
+                    padding: collapsed ? '0 1.5rem' : undefined,
+                    marginBottom: collapsed ? 0 : undefined,
+                }}
+            >
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
                     <div>
                         <h1 className="text-2xl font-bold text-slate-900">Chat Logs</h1>
@@ -163,6 +319,24 @@ export default function ChatLogsPage() {
 
                     {/* Search + Filters */}
                     <div className="flex items-center gap-3 flex-wrap">
+                        {/* Analytics Toggle */}
+                        {data && analytics && (
+                            <button
+                                id="analytics-toggle-btn"
+                                onClick={() => setShowAnalytics(!showAnalytics)}
+                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all shadow-sm ${showAnalytics
+                                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                                    : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'
+                                    }`}
+                                title={showAnalytics ? 'Hide Analytics' : 'Show Analytics'}
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                </svg>
+                                Analytics
+                            </button>
+                        )}
+
                         {/* Search */}
                         <div className="relative">
                             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -206,6 +380,150 @@ export default function ChatLogsPage() {
                 </div>
             </div>
 
+            {/* ── Analytics Panel ── */}
+            {showAnalytics && analytics && !loading && !error && !collapsed && (
+                <div className="shrink-0 px-4 md:px-6 pb-4 animate-in">
+                    {/* Stats Cards */}
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                        {/* Total Users */}
+                        <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-2xl p-4 text-white shadow-md shadow-indigo-200">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-lg">👥</span>
+                                <span className="text-xs font-semibold text-indigo-200 uppercase tracking-wider">Users</span>
+                            </div>
+                            <p className="text-3xl font-black">{analytics.totalUsers}</p>
+                            <p className="text-[11px] text-indigo-200 mt-1">Active users</p>
+                        </div>
+
+                        {/* Total Sessions */}
+                        <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-4 text-white shadow-md shadow-purple-200">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-lg">🔄</span>
+                                <span className="text-xs font-semibold text-purple-200 uppercase tracking-wider">Sessions</span>
+                            </div>
+                            <p className="text-3xl font-black">{analytics.totalSessions}</p>
+                            <p className="text-[11px] text-purple-200 mt-1">Total conversations</p>
+                        </div>
+
+                        {/* Total Messages */}
+                        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl p-4 text-white shadow-md shadow-emerald-200">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-lg">💬</span>
+                                <span className="text-xs font-semibold text-emerald-200 uppercase tracking-wider">Messages</span>
+                            </div>
+                            <p className="text-3xl font-black">{analytics.totalMsgs}</p>
+                            <p className="text-[11px] text-emerald-200 mt-1">Total messages</p>
+                        </div>
+
+                        {/* Avg Session Duration */}
+                        <div className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-2xl p-4 text-white shadow-md shadow-amber-200">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-lg">⏱️</span>
+                                <span className="text-xs font-semibold text-amber-200 uppercase tracking-wider">Avg Duration</span>
+                            </div>
+                            <p className="text-3xl font-black">{fmtDuration(analytics.avgDurationMs)}</p>
+                            <p className="text-[11px] text-amber-200 mt-1">Per session</p>
+                        </div>
+
+                        {/* Channel Breakdown */}
+                        <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm col-span-2 md:col-span-1">
+                            <div className="flex items-center gap-2 mb-3">
+                                <span className="text-lg">📊</span>
+                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Channels</span>
+                            </div>
+                            <div className="space-y-2">
+                                {analytics.channelBreakdown.map(([ch, count]) => (
+                                    <div key={ch}>
+                                        <div className="flex items-center justify-between text-xs mb-1">
+                                            <span className="font-medium text-slate-700">{channelIcon(ch)} {ch}</span>
+                                            <span className="text-slate-500">{count} ({Math.round((count / analytics.channelTotal) * 100)}%)</span>
+                                        </div>
+                                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                            <div
+                                                className={`h-full rounded-full transition-all ${ch.toLowerCase().includes('whatsapp') ? 'bg-emerald-500' :
+                                                    ch.toLowerCase().includes('telegram') ? 'bg-sky-500' : 'bg-slate-400'
+                                                    }`}
+                                                style={{ width: `${(count / analytics.channelTotal) * 100}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Bottom row: Top Users + Common Topics */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {/* Top Active Users */}
+                        <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
+                            <div className="flex items-center gap-2 mb-3">
+                                <span className="text-lg">🏆</span>
+                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Most Active Users</span>
+                            </div>
+                            <div className="space-y-2">
+                                {analytics.topUsers.map((u, i) => (
+                                    <div key={u.userId} className="flex items-center gap-3 group">
+                                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${i === 0 ? 'bg-amber-100 text-amber-700' :
+                                            i === 1 ? 'bg-slate-200 text-slate-600' :
+                                                i === 2 ? 'bg-orange-100 text-orange-700' :
+                                                    'bg-slate-100 text-slate-500'
+                                            }`}>{i + 1}</span>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-semibold text-slate-800 truncate">{u.userId}</p>
+                                        </div>
+                                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${channelColor(u.channel)}`}>
+                                            {channelIcon(u.channel)}
+                                        </span>
+                                        <div className="text-right shrink-0">
+                                            <p className="text-xs font-bold text-slate-700">{u.msgCount} <span className="font-normal text-slate-400">msgs</span></p>
+                                            <p className="text-[10px] text-slate-400">{u.sessionCount} sessions</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Common Topics */}
+                        <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
+                            <div className="flex items-center gap-2 mb-3">
+                                <span className="text-lg">🔍</span>
+                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Common Topics</span>
+                                <span className="text-[10px] text-slate-400 ml-auto">from user messages</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                                {analytics.topTopics.length > 0 ? (
+                                    analytics.topTopics.map(([word, freq], i) => {
+                                        // Scale tag size based on frequency rank
+                                        const scale = i < 3 ? 'text-sm font-bold' :
+                                            i < 7 ? 'text-xs font-semibold' : 'text-[11px] font-medium';
+                                        const colors = [
+                                            'bg-indigo-50 text-indigo-700 border-indigo-200',
+                                            'bg-purple-50 text-purple-700 border-purple-200',
+                                            'bg-emerald-50 text-emerald-700 border-emerald-200',
+                                            'bg-sky-50 text-sky-700 border-sky-200',
+                                            'bg-amber-50 text-amber-700 border-amber-200',
+                                            'bg-rose-50 text-rose-700 border-rose-200',
+                                        ];
+                                        const color = colors[i % colors.length];
+                                        return (
+                                            <span
+                                                key={word}
+                                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border ${scale} ${color} transition-all hover:scale-105 cursor-default`}
+                                            >
+                                                {word}
+                                                <span className="opacity-50 text-[10px]">×{freq}</span>
+                                            </span>
+                                        );
+                                    })
+                                ) : (
+                                    <p className="text-sm text-slate-400">No user messages yet</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* ── Body ── */}
             {loading ? (
                 <div className="flex-1 flex items-center justify-center">
@@ -233,7 +551,7 @@ export default function ChatLogsPage() {
                     </div>
                 </div>
             ) : (
-                <div className="flex-1 flex overflow-hidden mx-4 md:mx-6 mb-4 md:mb-6 gap-4">
+                <div className="flex-1 flex overflow-hidden mx-4 md:mx-6 mb-4 md:mb-6 gap-4 min-w-[900px]">
                     {/* ── Left Panel: User List ── */}
                     <div className={`${selectedUser ? 'hidden md:flex' : 'flex'} flex-col w-full md:w-80 shrink-0 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden`}>
                         <div className="p-4 border-b border-slate-100">
@@ -335,7 +653,11 @@ export default function ChatLogsPage() {
                             </div>
 
                             {/* Messages */}
-                            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-gradient-to-b from-slate-50/50 to-white">
+                            <div
+                                ref={scrollRef}
+                                onScroll={handleMessagesScroll}
+                                className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-gradient-to-b from-slate-50/50 to-white"
+                            >
                                 {selectedSession?.messages.map((msg) => (
                                     <div
                                         key={msg.messageId}
