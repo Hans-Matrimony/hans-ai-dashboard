@@ -126,16 +126,67 @@ export default function ChatLogsPage() {
         const el = scrollRef.current;
         if (!el) return;
         const st = el.scrollTop;
-        // Collapse when scrolling down past 30px
         if (st > 30 && st > lastScrollTop.current) {
             setCollapsed(true);
         }
-        // Expand when scrolling back to very top
         if (st <= 5) {
             setCollapsed(false);
         }
         lastScrollTop.current = st;
     }, []);
+
+    // deleting state
+    const [deleting, setDeleting] = useState(false);
+
+    // Re-fetch helper
+    const refetchData = () => {
+        setLoading(true);
+        fetch('/api/chat-logs/messages')
+            .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+            .then((d: ApiResponse) => { setData(d); setLoading(false); })
+            .catch(err => { setError(err.message || 'Failed to fetch'); setLoading(false); });
+    };
+
+    // Delete a specific user
+    const handleDeleteUser = async (userId: string) => {
+        if (!window.confirm(`Are you sure you want to delete ALL records for "${userId}"?\n\nThis cannot be undone.`)) return;
+        setDeleting(true);
+        try {
+            const res = await fetch(`/api/chat-logs/messages/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+            const json = await res.json();
+            if (res.ok) {
+                setSelectedUser(null);
+                setSelectedSession(null);
+                refetchData();
+            } else {
+                alert(`Error: ${json.error || 'Failed to delete'}`);
+            }
+        } catch (err) {
+            alert(`Network error: ${err}`);
+        }
+        setDeleting(false);
+    };
+
+    // Delete all records
+    const handleDeleteAll = async () => {
+        if (!window.confirm('⚠️ DELETE ALL RECORDS?\n\nThis will permanently delete ALL user conversations and debug logs.\n\nThis CANNOT be undone!')) return;
+        if (!window.confirm('Are you REALLY sure? Type OK to confirm.')) return;
+        setDeleting(true);
+        try {
+            const res = await fetch('/api/chat-logs/messages?confirm=yes', { method: 'DELETE' });
+            const json = await res.json();
+            if (res.ok) {
+                setSelectedUser(null);
+                setSelectedSession(null);
+                refetchData();
+            } else {
+                alert(`Error: ${json.error || 'Failed to delete'}`);
+            }
+        } catch (err) {
+            alert(`Network error: ${err}`);
+        }
+        setDeleting(false);
+    };
 
     // fetch data
     useEffect(() => {
@@ -376,6 +427,21 @@ export default function ChatLogsPage() {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                             </svg>
                         </button>
+
+                        {/* Delete All */}
+                        {data && data.users.length > 0 && (
+                            <button
+                                id="delete-all-btn"
+                                onClick={handleDeleteAll}
+                                disabled={deleting}
+                                className="p-2.5 rounded-xl border border-red-200 bg-white text-red-400 hover:text-red-600 hover:border-red-400 hover:bg-red-50 transition-all shadow-sm disabled:opacity-50"
+                                title="Delete All Records"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -637,6 +703,19 @@ export default function ChatLogsPage() {
                                             ))}
                                         </div>
                                     )}
+
+                                    {/* Delete User button */}
+                                    <button
+                                        onClick={() => handleDeleteUser(selectedUser.userId)}
+                                        disabled={deleting}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-500 hover:bg-red-50 hover:text-red-700 border border-transparent hover:border-red-200 transition-all disabled:opacity-50"
+                                        title={`Delete all records for ${selectedUser.userId}`}
+                                    >
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                        Delete
+                                    </button>
                                 </div>
 
                                 {/* Session info bar */}
