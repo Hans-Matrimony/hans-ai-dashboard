@@ -117,24 +117,6 @@ export default function ChatLogsPage() {
     // analytics panel toggle
     const [showAnalytics, setShowAnalytics] = useState(true);
 
-    // parallax collapse state: collapses header + analytics when scrolling in messages
-    const [collapsed, setCollapsed] = useState(false);
-    const scrollRef = useRef<HTMLDivElement>(null);
-    const lastScrollTop = useRef(0);
-
-    const handleMessagesScroll = useCallback(() => {
-        const el = scrollRef.current;
-        if (!el) return;
-        const st = el.scrollTop;
-        if (st > 30 && st > lastScrollTop.current) {
-            setCollapsed(true);
-        }
-        if (st <= 5) {
-            setCollapsed(false);
-        }
-        lastScrollTop.current = st;
-    }, []);
-
     // deleting state
     const [deleting, setDeleting] = useState(false);
 
@@ -336,30 +318,8 @@ export default function ChatLogsPage() {
     /* ──────── Render ──────── */
     return (
         <div className="h-screen flex flex-col overflow-x-auto overflow-y-hidden">
-            {/* ── Compact restore bar (shown when collapsed) ── */}
-            {collapsed && (
-                <button
-                    onClick={() => setCollapsed(false)}
-                    className="shrink-0 flex items-center justify-center gap-2 px-4 py-1.5 bg-indigo-50 border-b border-indigo-100 text-indigo-600 text-xs font-semibold hover:bg-indigo-100 transition-all cursor-pointer"
-                >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                    Show header & analytics
-                </button>
-            )}
-
             {/* ── Header ── */}
-            <div
-                className="shrink-0 p-4 md:p-6 pb-0 transition-all duration-300 ease-in-out"
-                style={{
-                    maxHeight: collapsed ? '0px' : '200px',
-                    opacity: collapsed ? 0 : 1,
-                    overflow: 'hidden',
-                    padding: collapsed ? '0 1.5rem' : undefined,
-                    marginBottom: collapsed ? 0 : undefined,
-                }}
-            >
+            <div className="shrink-0 p-4 md:p-6 pb-0">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
                     <div>
                         <h1 className="text-2xl font-bold text-slate-900">Chat Logs</h1>
@@ -446,65 +406,60 @@ export default function ChatLogsPage() {
                 </div>
             </div>
 
-            {/* ── Analytics Panel ── */}
-            {showAnalytics && analytics && !loading && !error && !collapsed && (
-                <div className="shrink-0 px-4 md:px-6 pb-4 animate-in">
+            {/* ── Analytics Panel (Scrollable & Compact) ── */}
+            {showAnalytics && analytics && !loading && !error && (
+                <div className="shrink-0 px-4 md:px-6 pb-4 max-h-[30vh] md:max-h-[35vh] overflow-y-auto custom-scrollbar border-b border-slate-100 mb-2">
                     {/* Stats Cards */}
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
                         {/* Total Users */}
-                        <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-2xl p-4 text-white shadow-md shadow-indigo-200">
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className="text-lg">👥</span>
-                                <span className="text-xs font-semibold text-indigo-200 uppercase tracking-wider">Users</span>
+                        <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl p-3 text-white shadow-sm">
+                            <div className="flex items-center gap-2 mb-1">
+                                <span className="text-base">👥</span>
+                                <span className="text-[10px] font-semibold text-indigo-100 uppercase tracking-tight">Users</span>
                             </div>
-                            <p className="text-3xl font-black">{analytics.totalUsers}</p>
-                            <p className="text-[11px] text-indigo-200 mt-1">Active users</p>
+                            <p className="text-xl font-bold">{analytics.totalUsers}</p>
                         </div>
 
                         {/* Total Sessions */}
-                        <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-4 text-white shadow-md shadow-purple-200">
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className="text-lg">🔄</span>
-                                <span className="text-xs font-semibold text-purple-200 uppercase tracking-wider">Sessions</span>
+                        <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-3 text-white shadow-sm">
+                            <div className="flex items-center gap-2 mb-1">
+                                <span className="text-base">🔄</span>
+                                <span className="text-[10px] font-semibold text-purple-100 uppercase tracking-tight">Sessions</span>
                             </div>
-                            <p className="text-3xl font-black">{analytics.totalSessions}</p>
-                            <p className="text-[11px] text-purple-200 mt-1">Total conversations</p>
+                            <p className="text-xl font-bold">{analytics.totalSessions}</p>
                         </div>
 
                         {/* Total Messages */}
-                        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl p-4 text-white shadow-md shadow-emerald-200">
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className="text-lg">💬</span>
-                                <span className="text-xs font-semibold text-emerald-200 uppercase tracking-wider">Messages</span>
+                        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-3 text-white shadow-sm">
+                            <div className="flex items-center gap-2 mb-1">
+                                <span className="text-base">💬</span>
+                                <span className="text-[10px] font-semibold text-emerald-100 uppercase tracking-tight">Msgs</span>
                             </div>
-                            <p className="text-3xl font-black">{analytics.totalMsgs}</p>
-                            <p className="text-[11px] text-emerald-200 mt-1">Total messages</p>
+                            <p className="text-xl font-bold">{analytics.totalMsgs}</p>
                         </div>
 
                         {/* Avg Session Duration */}
-                        <div className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-2xl p-4 text-white shadow-md shadow-amber-200">
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className="text-lg">⏱️</span>
-                                <span className="text-xs font-semibold text-amber-200 uppercase tracking-wider">Avg Duration</span>
+                        <div className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl p-3 text-white shadow-sm">
+                            <div className="flex items-center gap-2 mb-1">
+                                <span className="text-base">⏱️</span>
+                                <span className="text-[10px] font-semibold text-amber-100 uppercase tracking-tight">Avg Time</span>
                             </div>
-                            <p className="text-3xl font-black">{fmtDuration(analytics.avgDurationMs)}</p>
-                            <p className="text-[11px] text-amber-200 mt-1">Per session</p>
+                            <p className="text-xl font-bold">{fmtDuration(analytics.avgDurationMs)}</p>
                         </div>
 
                         {/* Channel Breakdown */}
-                        <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm col-span-2 md:col-span-1">
-                            <div className="flex items-center gap-2 mb-3">
-                                <span className="text-lg">📊</span>
-                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Channels</span>
+                        <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
+                            <div className="flex items-center gap-2 mb-1.5">
+                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-tight">Channels</span>
                             </div>
-                            <div className="space-y-2">
+                            <div className="space-y-1.5">
                                 {analytics.channelBreakdown.map(([ch, count]) => (
                                     <div key={ch}>
-                                        <div className="flex items-center justify-between text-xs mb-1">
+                                        <div className="flex items-center justify-between text-[10px] mb-0.5">
                                             <span className="font-medium text-slate-700">{channelIcon(ch)} {ch}</span>
-                                            <span className="text-slate-500">{count} ({Math.round((count / analytics.channelTotal) * 100)}%)</span>
+                                            <span className="text-slate-500">{count}</span>
                                         </div>
-                                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                        <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
                                             <div
                                                 className={`h-full rounded-full transition-all ${ch.toLowerCase().includes('whatsapp') ? 'bg-emerald-500' :
                                                     ch.toLowerCase().includes('telegram') ? 'bg-sky-500' : 'bg-slate-400'
@@ -521,68 +476,40 @@ export default function ChatLogsPage() {
                     {/* Bottom row: Top Users + Common Topics */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {/* Top Active Users */}
-                        <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
-                            <div className="flex items-center gap-2 mb-3">
-                                <span className="text-lg">🏆</span>
-                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Most Active Users</span>
+                        <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-tight">Active Users</span>
                             </div>
-                            <div className="space-y-2">
+                            <div className="grid grid-cols-1 gap-1.5">
                                 {analytics.topUsers.map((u, i) => (
-                                    <div key={u.userId} className="flex items-center gap-3 group">
-                                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${i === 0 ? 'bg-amber-100 text-amber-700' :
-                                            i === 1 ? 'bg-slate-200 text-slate-600' :
-                                                i === 2 ? 'bg-orange-100 text-orange-700' :
-                                                    'bg-slate-100 text-slate-500'
-                                            }`}>{i + 1}</span>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-semibold text-slate-800 truncate">{u.userId}</p>
-                                        </div>
-                                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${channelColor(u.channel)}`}>
-                                            {channelIcon(u.channel)}
-                                        </span>
-                                        <div className="text-right shrink-0">
-                                            <p className="text-xs font-bold text-slate-700">{u.msgCount} <span className="font-normal text-slate-400">msgs</span></p>
-                                            <p className="text-[10px] text-slate-400">{u.sessionCount} sessions</p>
-                                        </div>
+                                    <div key={u.userId} className="flex items-center gap-2 text-[11px]">
+                                        <span className={`w-4 h-4 rounded-full flex items-center justify-center font-bold shrink-0 ${i === 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{i + 1}</span>
+                                        <p className="font-semibold text-slate-800 truncate flex-1">{u.userId}</p>
+                                        <span className={`text-[9px] px-1 py-0 rounded border ${channelColor(u.channel)}`}>{channelIcon(u.channel)}</span>
+                                        <p className="font-bold text-slate-700 shrink-0">{u.msgCount} <span className="font-normal text-slate-400">msgs</span></p>
                                     </div>
                                 ))}
                             </div>
                         </div>
 
                         {/* Common Topics */}
-                        <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
-                            <div className="flex items-center gap-2 mb-3">
-                                <span className="text-lg">🔍</span>
-                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Common Topics</span>
-                                <span className="text-[10px] text-slate-400 ml-auto">from user messages</span>
+                        <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-tight">Topics</span>
                             </div>
-                            <div className="flex flex-wrap gap-1.5">
+                            <div className="flex flex-wrap gap-1">
                                 {analytics.topTopics.length > 0 ? (
-                                    analytics.topTopics.map(([word, freq], i) => {
-                                        // Scale tag size based on frequency rank
-                                        const scale = i < 3 ? 'text-sm font-bold' :
-                                            i < 7 ? 'text-xs font-semibold' : 'text-[11px] font-medium';
-                                        const colors = [
-                                            'bg-indigo-50 text-indigo-700 border-indigo-200',
-                                            'bg-purple-50 text-purple-700 border-purple-200',
-                                            'bg-emerald-50 text-emerald-700 border-emerald-200',
-                                            'bg-sky-50 text-sky-700 border-sky-200',
-                                            'bg-amber-50 text-amber-700 border-amber-200',
-                                            'bg-rose-50 text-rose-700 border-rose-200',
-                                        ];
-                                        const color = colors[i % colors.length];
-                                        return (
-                                            <span
-                                                key={word}
-                                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border ${scale} ${color} transition-all hover:scale-105 cursor-default`}
-                                            >
-                                                {word}
-                                                <span className="opacity-50 text-[10px]">×{freq}</span>
-                                            </span>
-                                        );
-                                    })
+                                    analytics.topTopics.map(([word, freq], i) => (
+                                        <span
+                                            key={word}
+                                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium bg-slate-50 text-slate-600 border-slate-100`}
+                                        >
+                                            {word}
+                                            <span className="opacity-50">×{freq}</span>
+                                        </span>
+                                    ))
                                 ) : (
-                                    <p className="text-sm text-slate-400">No user messages yet</p>
+                                    <p className="text-[10px] text-slate-400">No data</p>
                                 )}
                             </div>
                         </div>
@@ -732,11 +659,7 @@ export default function ChatLogsPage() {
                             </div>
 
                             {/* Messages */}
-                            <div
-                                ref={scrollRef}
-                                onScroll={handleMessagesScroll}
-                                className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-gradient-to-b from-slate-50/50 to-white"
-                            >
+                            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-gradient-to-b from-slate-50/50 to-white">
                                 {selectedSession?.messages.map((msg) => (
                                     <div
                                         key={msg.messageId}
