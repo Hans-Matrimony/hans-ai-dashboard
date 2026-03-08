@@ -111,8 +111,9 @@ export default function ChatLogsPage() {
     const [channelFilter, setChannelFilter] = useState<string>('all');
 
     // selection state
-    const [selectedUser, setSelectedUser] = useState<UserDoc | null>(null);
-    const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+    const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+    const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+    const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
 
     // analytics panel toggle
     const [showAnalytics, setShowAnalytics] = useState(true);
@@ -121,13 +122,31 @@ export default function ChatLogsPage() {
     const [deleting, setDeleting] = useState(false);
 
     // Re-fetch helper
-    const refetchData = () => {
-        setLoading(true);
+    const refetchData = useCallback((showLoading = true) => {
+        if (showLoading) setLoading(true);
         fetch('/api/chat-logs/messages')
             .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-            .then((d: ApiResponse) => { setData(d); setLoading(false); })
-            .catch(err => { setError(err.message || 'Failed to fetch'); setLoading(false); });
-    };
+            .then((d: ApiResponse) => {
+                setData(d);
+                setLastRefreshed(new Date());
+                if (showLoading) setLoading(false);
+            })
+            .catch(err => {
+                setError(err.message || 'Failed to fetch');
+                if (showLoading) setLoading(false);
+            });
+    }, []);
+
+    // Selection derivations
+    const selectedUser = useMemo(() => {
+        if (!data || !selectedUserId) return null;
+        return data.users.find(u => u.userId === selectedUserId) || null;
+    }, [data, selectedUserId]);
+
+    const selectedSession = useMemo(() => {
+        if (!selectedUser || !selectedSessionId) return null;
+        return selectedUser.sessions.find(s => s.sessionId === selectedSessionId) || selectedUser.sessions[0] || null;
+    }, [selectedUser, selectedSessionId]);
 
     // Delete a specific user
     const handleDeleteUser = async (userId: string) => {
@@ -137,8 +156,8 @@ export default function ChatLogsPage() {
             const res = await fetch(`/api/chat-logs/messages/${encodeURIComponent(userId)}`, { method: 'DELETE' });
             const json = await res.json();
             if (res.ok) {
-                setSelectedUser(null);
-                setSelectedSession(null);
+                setSelectedUserId(null);
+                setSelectedSessionId(null);
                 refetchData();
             } else {
                 alert(`Error: ${json.error || 'Failed to delete'}`);
@@ -158,8 +177,8 @@ export default function ChatLogsPage() {
             const res = await fetch('/api/chat-logs/messages?confirm=yes', { method: 'DELETE' });
             const json = await res.json();
             if (res.ok) {
-                setSelectedUser(null);
-                setSelectedSession(null);
+                setSelectedUserId(null);
+                setSelectedSessionId(null);
                 refetchData();
             } else {
                 alert(`Error: ${json.error || 'Failed to delete'}`);
@@ -172,22 +191,13 @@ export default function ChatLogsPage() {
 
     // fetch data
     useEffect(() => {
-        setLoading(true);
-        setError('');
-        fetch('/api/chat-logs/messages')
-            .then(r => {
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                return r.json();
-            })
-            .then((d: ApiResponse) => {
-                setData(d);
-                setLoading(false);
-            })
-            .catch(err => {
-                setError(err.message || 'Failed to fetch');
-                setLoading(false);
-            });
-    }, []);
+        refetchData();
+        // Auto-refresh every 30 seconds
+        const interval = setInterval(() => {
+            refetchData(false); // background refresh
+        }, 15000);
+        return () => clearInterval(interval);
+    }, [refetchData]);
 
     // compute unique channels
     const channels = useMemo(() => {
@@ -325,6 +335,11 @@ export default function ChatLogsPage() {
                         <h1 className="text-2xl font-bold text-slate-900">Chat Logs</h1>
                         <p className="text-slate-500 text-sm mt-0.5">
                             {data ? `${data.count} users · ${data.users.reduce((a, u) => a + totalMessages(u), 0)} messages` : 'Loading…'}
+                            {data && (
+                                <span className="ml-2 text-[10px] text-slate-400 font-medium">
+                                    Last refetched: {lastRefreshed.toLocaleTimeString()}
+                                </span>
+                            )}
                         </p>
                     </div>
 
@@ -379,9 +394,10 @@ export default function ChatLogsPage() {
                         {/* Refresh */}
                         <button
                             id="refresh-btn"
-                            onClick={() => window.location.reload()}
-                            className="p-2.5 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-indigo-600 hover:border-indigo-300 transition-all shadow-sm"
+                            onClick={() => refetchData()}
+                            className={`p-2.5 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-indigo-600 hover:border-indigo-300 transition-all shadow-sm ${loading ? 'animate-pulse' : ''}`}
                             title="Refresh"
+                            disabled={loading}
                         >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -563,8 +579,8 @@ export default function ChatLogsPage() {
                                     <button
                                         key={user._id}
                                         onClick={() => {
-                                            setSelectedUser(user);
-                                            setSelectedSession(user.sessions[0] || null);
+                                            setSelectedUserId(user.userId);
+                                            setSelectedSessionId(user.sessions[0]?.sessionId || null);
                                         }}
                                         className={`w-full text-left p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors ${selectedUser?._id === user._id ? 'bg-indigo-50/70 border-l-2 border-l-indigo-500' : ''
                                             }`}
@@ -598,7 +614,7 @@ export default function ChatLogsPage() {
                                     <div className="flex items-center gap-3">
                                         {/* Back button (mobile) */}
                                         <button
-                                            onClick={() => { setSelectedUser(null); setSelectedSession(null); }}
+                                            onClick={() => { setSelectedUserId(null); setSelectedSessionId(null); }}
                                             className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
                                         >
                                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -619,7 +635,7 @@ export default function ChatLogsPage() {
                                             {selectedUser.sessions.map((s, i) => (
                                                 <button
                                                     key={s.sessionId}
-                                                    onClick={() => setSelectedSession(s)}
+                                                    onClick={() => setSelectedSessionId(s.sessionId)}
                                                     className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${selectedSession?.sessionId === s.sessionId
                                                         ? 'bg-indigo-100 text-indigo-700'
                                                         : 'text-slate-500 hover:bg-slate-100'
