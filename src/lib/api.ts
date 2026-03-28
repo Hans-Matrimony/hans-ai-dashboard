@@ -57,4 +57,12 @@ export const healthApi = {
   check: () => api.get('/health'),
 };
 
+// Analytics API
+export const analyticsApi = {
+  getAnalytics: (params: any = {}) => api.get('/api/chat-logs/analytics', { params }),
+  getDetailedAnalytics: (params: any = {}) => api.get('/api/chat-logs/analytics/detailed', { params }),
+  triggerAnalysis: (payload: any) => api.post('/api/chat-logs/analyze', payload),
+  clearCache: () => api.delete('/api/chat-logs/analytics/cache'),
+};
+
 export default api;
