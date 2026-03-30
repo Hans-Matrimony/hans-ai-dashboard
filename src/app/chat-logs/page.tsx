@@ -208,7 +208,7 @@ export default function ChatLogsPage() {
         return Array.from(set);
     }, [data]);
 
-    // filtered users
+    // filtered users (sorted by most recent activity)
     const filteredUsers = useMemo(() => {
         if (!data) return [];
         let users = data.users;
@@ -232,6 +232,13 @@ export default function ChatLogsPage() {
             });
         }
 
+        // Sort by most recent activity (last message time)
+        users = users.sort((a, b) => {
+            const timeA = new Date(latestActivity(a)).getTime();
+            const timeB = new Date(latestActivity(b)).getTime();
+            return timeB - timeA; // Most recent first
+        });
+
         return users;
     }, [data, search, channelFilter]);
 
@@ -249,6 +256,14 @@ export default function ChatLogsPage() {
         return latest;
     }
 
+    // check if user is currently active (within last 5 minutes)
+    function isUserActive(u: UserDoc) {
+        const lastMsg = latestActivity(u);
+        if (!lastMsg) return false;
+        const diff = Date.now() - new Date(lastMsg).getTime();
+        return diff < 5 * 60 * 1000; // 5 minutes
+    }
+
     /* ──────── Analytics Computations ──────── */
     const analytics = useMemo(() => {
         if (!data || !data.users.length) return null;
@@ -262,6 +277,9 @@ export default function ChatLogsPage() {
         const totalUsers = users.length;
         const totalSessions = allSessions.length;
         const totalMsgs = allMessages.length;
+
+        // Active users (within last 5 minutes)
+        const activeUsersCount = users.filter(u => isUserActive(u)).length;
 
         // Average session duration
         let totalDurationMs = 0;
@@ -316,6 +334,7 @@ export default function ChatLogsPage() {
 
         return {
             totalUsers,
+            activeUsersCount,
             totalSessions,
             totalMsgs,
             avgDurationMs,
@@ -335,7 +354,21 @@ export default function ChatLogsPage() {
                     <div>
                         <h1 className="text-2xl font-bold text-slate-900">Chat Logs</h1>
                         <p className="text-slate-500 text-sm mt-0.5">
-                            {data ? `${data.count} users · ${data.users.reduce((a, u) => a + totalMessages(u), 0)} messages` : 'Loading…'}
+                            {data && analytics ? (
+                                <>
+                                    <span className="inline-flex items-center gap-1.5">
+                                        <span className="relative flex h-2 w-2">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                                        </span>
+                                        <span className="font-semibold text-green-600">{analytics.activeUsersCount} active</span>
+                                    </span>
+                                    <span className="mx-2">·</span>
+                                    <span>{data.count} total users</span>
+                                    <span className="mx-2">·</span>
+                                    <span>{data.users.reduce((a, u) => a + totalMessages(u), 0)} messages</span>
+                                </>
+                            ) : 'Loading…'}
                             {data && (
                                 <span className="ml-2 text-[10px] text-slate-400 font-medium">
                                     Last refetched: {lastRefreshed.toLocaleTimeString()}
@@ -440,11 +473,22 @@ export default function ChatLogsPage() {
                 <div className="shrink-0 px-4 md:px-6 pb-4 max-h-[30vh] md:max-h-[35vh] overflow-y-auto custom-scrollbar border-b border-slate-100 mb-2">
                     {/* Stats Cards */}
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
+                        {/* Active Users (NEW) */}
+                        <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl p-3 text-white shadow-sm relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full -mr-8 -mt-8"></div>
+                            <div className="flex items-center gap-2 mb-1">
+                                <span className="text-base relative">🟢</span>
+                                <span className="text-[10px] font-semibold text-green-100 uppercase tracking-tight">Active Now</span>
+                            </div>
+                            <p className="text-2xl font-bold">{analytics.activeUsersCount}</p>
+                            <p className="text-[9px] text-green-100 mt-0.5">Last 5 minutes</p>
+                        </div>
+
                         {/* Total Users */}
                         <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl p-3 text-white shadow-sm">
                             <div className="flex items-center gap-2 mb-1">
                                 <span className="text-base">👥</span>
-                                <span className="text-[10px] font-semibold text-indigo-100 uppercase tracking-tight">Users</span>
+                                <span className="text-[10px] font-semibold text-indigo-100 uppercase tracking-tight">Total Users</span>
                             </div>
                             <p className="text-xl font-bold">{analytics.totalUsers}</p>
                         </div>
@@ -588,32 +632,49 @@ export default function ChatLogsPage() {
                                     <p className="text-sm text-slate-400">No users found</p>
                                 </div>
                             ) : (
-                                filteredUsers.map(user => (
-                                    <button
-                                        key={user._id}
-                                        onClick={() => {
-                                            setSelectedUserId(user.userId);
-                                            setSelectedSessionId(user.sessions[0]?.sessionId || null);
-                                        }}
-                                        className={`w-full text-left p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors ${selectedUser?._id === user._id ? 'bg-indigo-50/70 border-l-2 border-l-indigo-500' : ''
-                                            }`}
-                                    >
-                                        <div className="flex items-start justify-between gap-2">
-                                            <div className="min-w-0 flex-1">
-                                                <p className="text-sm font-semibold text-slate-800 truncate">{user.userId}</p>
-                                                <div className="flex items-center gap-2 mt-1.5">
-                                                    <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border ${channelColor(user.sessions[0]?.channel)}`}>
-                                                        {channelIcon(user.sessions[0]?.channel)} {user.sessions[0]?.channel}
-                                                    </span>
+                                filteredUsers.map(user => {
+                                    const active = isUserActive(user);
+                                    return (
+                                        <button
+                                            key={user._id}
+                                            onClick={() => {
+                                                setSelectedUserId(user.userId);
+                                                setSelectedSessionId(user.sessions[0]?.sessionId || null);
+                                            }}
+                                            className={`w-full text-left p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors ${selectedUser?._id === user._id ? 'bg-indigo-50/70 border-l-2 border-l-indigo-500' : ''
+                                                }`}
+                                        >
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        {/* Live indicator */}
+                                                        {active && (
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="relative flex h-2.5 w-2.5">
+                                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                                                                </span>
+                                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-50 text-green-700 border border-green-200">
+                                                                    LIVE
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        <p className="text-sm font-semibold text-slate-800 truncate">{user.userId}</p>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 mt-1.5">
+                                                        <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border ${channelColor(user.sessions[0]?.channel)}`}>
+                                                            {channelIcon(user.sessions[0]?.channel)} {user.sessions[0]?.channel}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right shrink-0">
+                                                    <p className={`text-[11px] font-medium ${active ? 'text-green-600' : 'text-slate-400'}`}>{fmtRelative(latestActivity(user))}</p>
+                                                    <p className="text-[11px] text-slate-400 mt-1">{totalMessages(user)} msgs</p>
                                                 </div>
                                             </div>
-                                            <div className="text-right shrink-0">
-                                                <p className="text-[11px] text-slate-400">{fmtRelative(latestActivity(user))}</p>
-                                                <p className="text-[11px] text-slate-400 mt-1">{totalMessages(user)} msgs</p>
-                                            </div>
-                                        </div>
-                                    </button>
-                                ))
+                                        </button>
+                                    );
+                                })
                             )}
                         </div>
                     </div>
