@@ -125,6 +125,42 @@ export default function ChatLogsPage() {
     // fullscreen state
     const [isFullscreen, setIsFullscreen] = useState(false);
 
+    // resizing state
+    const [topHeight, setTopHeight] = useState<number | null>(null);
+    const [isResizing, setIsResizing] = useState(false);
+    const topSectionRef = useRef<HTMLDivElement>(null);
+
+    const startResizing = useCallback((e: React.MouseEvent) => {
+        setIsResizing(true);
+        e.preventDefault();
+    }, []);
+
+    const stopResizing = useCallback(() => {
+        setIsResizing(false);
+    }, []);
+
+    const resize = useCallback((e: MouseEvent) => {
+        if (!isResizing) return;
+        const newHeight = e.clientY; // Relative to viewport top
+        if (newHeight > 150 && newHeight < window.innerHeight * 0.7) {
+            setTopHeight(newHeight);
+        }
+    }, [isResizing]);
+
+    useEffect(() => {
+        if (isResizing) {
+            window.addEventListener('mousemove', resize);
+            window.addEventListener('mouseup', stopResizing);
+        } else {
+            window.removeEventListener('mousemove', resize);
+            window.removeEventListener('mouseup', stopResizing);
+        }
+        return () => {
+            window.removeEventListener('mousemove', resize);
+            window.removeEventListener('mouseup', stopResizing);
+        };
+    }, [isResizing, resize, stopResizing]);
+
     // deleting state
     const [deleting, setDeleting] = useState(false);
 
@@ -386,7 +422,6 @@ export default function ChatLogsPage() {
         const wordFreq: Record<string, number> = {};
         userMessages.forEach(m => {
             const words = m.text
-                .replace(/\\n/g, ' ')
                 .toLowerCase()
                 .replace(/[^a-zA-Z0-9\u0900-\u097F\s]/g, '')
                 .split(/\s+/)
@@ -410,332 +445,348 @@ export default function ChatLogsPage() {
             topUsers,
             topTopics,
         };
-    }, [data]);
+    }, [data, isUserActive, isUserActiveInPeriod, totalMessages]);
 
     /* ──────── Render ──────── */
     return (
         <div className={`h-screen flex flex-col overflow-x-auto overflow-y-hidden ${isFullscreen ? 'bg-slate-900' : ''}`}>
-            {/* ── Header ── */}
-            {!isFullscreen && (
-            <div className="shrink-0 p-4 md:p-6 pb-0">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-900">Chat Logs</h1>
-                        <p className="text-slate-500 text-sm mt-0.5">
-                            {data && analytics ? (
-                                <>
-                                    {timeFilter === 'all' ? (
-                                        <>
-                                            <span className="inline-flex items-center gap-1.5">
-                                                <span className="relative flex h-2 w-2">
-                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+            <div 
+                ref={topSectionRef}
+                style={(!isFullscreen && topHeight) ? { height: `${topHeight}px`, overflow: 'hidden' } : {}}
+                className="shrink-0 flex flex-col"
+            >
+                {/* ── Header ── */}
+                {!isFullscreen && (
+                <div className="shrink-0 p-4 md:p-6 pb-0">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                        <div>
+                            <h1 className="text-2xl font-bold text-slate-900">Chat Logs</h1>
+                            <p className="text-slate-500 text-sm mt-0.5">
+                                {data && analytics ? (
+                                    <>
+                                        {timeFilter === 'all' ? (
+                                            <>
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    <span className="relative flex h-2 w-2">
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                                                    </span>
+                                                    <span className="font-semibold text-green-600">{analytics.activeUsersCount} active</span>
                                                 </span>
-                                                <span className="font-semibold text-green-600">{analytics.activeUsersCount} active</span>
-                                            </span>
-                                            <span className="mx-2">·</span>
-                                            <span>{data.count} total users</span>
-                                            <span className="mx-2">·</span>
-                                            <span>{data.users.reduce((a, u) => a + totalMessages(u), 0)} messages</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <span className="inline-flex items-center gap-1.5">
-                                                <span className="relative flex h-2 w-2">
-                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                                                <span className="mx-2">·</span>
+                                                <span>{data.count} total users</span>
+                                                <span className="mx-2">·</span>
+                                                <span>{data.users.reduce((a, u) => a + totalMessages(u), 0)} messages</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    <span className="relative flex h-2 w-2">
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                                                    </span>
+                                                    <span className="font-semibold text-indigo-600">
+                                                        {filteredUsers.length} users
+                                                        <span className="text-indigo-400 font-normal"> active in </span>
+                                                        <span className="font-bold">{timeFilter}</span>
+                                                    </span>
                                                 </span>
-                                                <span className="font-semibold text-indigo-600">
-                                                    {filteredUsers.length} users
-                                                    <span className="text-indigo-400 font-normal"> active in </span>
-                                                    <span className="font-bold">{timeFilter}</span>
-                                                </span>
-                                            </span>
-                                            <span className="mx-2">·</span>
-                                            <span className="text-slate-400">{data.count} total</span>
-                                        </>
-                                    )}
-                                </>
-                            ) : 'Loading…'}
-                            {data && (
-                                <span className="ml-2 text-[10px] text-slate-400 font-medium">
-                                    Last refetched: {lastRefreshed.toLocaleTimeString()}
-                                </span>
-                            )}
-                        </p>
-                    </div>
+                                                <span className="mx-2">·</span>
+                                                <span className="text-slate-400">{data.count} total</span>
+                                            </>
+                                        )}
+                                    </>
+                                ) : 'Loading…'}
+                                {data && (
+                                    <span className="ml-2 text-[10px] text-slate-400 font-medium">
+                                        Last refetched: {lastRefreshed.toLocaleTimeString()}
+                                    </span>
+                                )}
+                            </p>
+                        </div>
 
-                    {/* Search + Filters */}
-                    <div className="flex items-center gap-3 flex-wrap">
-                        {/* Analytics Toggle */}
-                        {data && analytics && (
-                            <button
-                                id="analytics-toggle-btn"
-                                onClick={() => setShowAnalytics(!showAnalytics)}
-                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all shadow-sm ${showAnalytics
-                                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
-                                    : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'
-                                    }`}
-                                title={showAnalytics ? 'Hide Analytics' : 'Show Analytics'}
+                        {/* Search + Filters */}
+                        <div className="flex items-center gap-3 flex-wrap">
+                            {/* Analytics Toggle */}
+                            {data && analytics && (
+                                <button
+                                    id="analytics-toggle-btn"
+                                    onClick={() => setShowAnalytics(!showAnalytics)}
+                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all shadow-sm ${showAnalytics
+                                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                                        : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'
+                                        }`}
+                                    title={showAnalytics ? 'Hide Analytics' : 'Show Analytics'}
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                    </svg>
+                                    Analytics
+                                </button>
+                            )}
+
+                            {/* Conversation Analytics Link */}
+                            <Link
+                                href="/conversation-analytics"
+                                className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 text-sm font-medium transition-all shadow-sm"
+                                title="View detailed AI-powered conversation analytics"
                             >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                                 </svg>
-                                Analytics
-                            </button>
-                        )}
+                                AI Analytics
+                            </Link>
 
-                        {/* Conversation Analytics Link */}
-                        <Link
-                            href="/conversation-analytics"
-                            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 text-sm font-medium transition-all shadow-sm"
-                            title="View detailed AI-powered conversation analytics"
-                        >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                            </svg>
-                            AI Analytics
-                        </Link>
+                            {/* Search */}
+                            <div className="relative">
+                                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                                <input
+                                    id="chat-logs-search"
+                                    type="text"
+                                    placeholder="Search user ID, session, or text…"
+                                    value={search}
+                                    onChange={e => setSearch(e.target.value)}
+                                    className="pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 w-64 transition-all shadow-sm"
+                                />
+                            </div>
 
-                        {/* Search */}
-                        <div className="relative">
-                            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                            </svg>
-                            <input
-                                id="chat-logs-search"
-                                type="text"
-                                placeholder="Search user ID, session, or text…"
-                                value={search}
-                                onChange={e => setSearch(e.target.value)}
-                                className="pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 w-64 transition-all shadow-sm"
-                            />
-                        </div>
+                            {/* Channel filter */}
+                            <select
+                                id="channel-filter"
+                                value={channelFilter}
+                                onChange={e => setChannelFilter(e.target.value)}
+                                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 shadow-sm cursor-pointer"
+                            >
+                                <option value="all">All Channels</option>
+                                {channels.map(ch => (
+                                    <option key={ch} value={ch}>{ch.charAt(0).toUpperCase() + ch.slice(1)}</option>
+                                ))}
+                            </select>
 
-                        {/* Channel filter */}
-                        <select
-                            id="channel-filter"
-                            value={channelFilter}
-                            onChange={e => setChannelFilter(e.target.value)}
-                            className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 shadow-sm cursor-pointer"
-                        >
-                            <option value="all">All Channels</option>
-                            {channels.map(ch => (
-                                <option key={ch} value={ch}>{ch.charAt(0).toUpperCase() + ch.slice(1)}</option>
-                            ))}
-                        </select>
+                            {/* Time filter */}
+                            <div className="flex items-center gap-1.5 bg-slate-50 rounded-xl border border-slate-200 p-1">
+                                {[
+                                    { label: '1h', value: '1h', title: 'Last 1 hour' },
+                                    { label: '2h', value: '2h', title: 'Last 2 hours' },
+                                    { label: '4h', value: '4h', title: 'Last 4 hours' },
+                                    { label: '6h', value: '6h', title: 'Last 6 hours' },
+                                    { label: '12h', value: '12h', title: 'Last 12 hours' },
+                                    { label: '24h', value: '24h', title: 'Last 24 hours' },
+                                    { label: '7d', value: '7d', title: 'Last 7 days' },
+                                    { label: '30d', value: '30d', title: 'Last 30 days' },
+                                    { label: 'All', value: 'all', title: 'All time' },
+                                ].map((filter) => (
+                                    <button
+                                        key={filter.value}
+                                        onClick={() => setTimeFilter(filter.value)}
+                                        title={`${filter.title}: ${data ? data.users.filter(u => isUserActiveInPeriod(u, filter.value)).length : 0} users active`}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                                            timeFilter === filter.value
+                                                ? 'bg-white text-indigo-600 shadow-sm border border-slate-200'
+                                                : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
+                                        }`}
+                                    >
+                                        {filter.label}
+                                    </button>
+                                ))}
+                            </div>
 
-                        {/* Time filter */}
-                        <div className="flex items-center gap-1.5 bg-slate-50 rounded-xl border border-slate-200 p-1">
-                            {[
-                                { label: '1h', value: '1h', title: 'Last 1 hour' },
-                                { label: '2h', value: '2h', title: 'Last 2 hours' },
-                                { label: '4h', value: '4h', title: 'Last 4 hours' },
-                                { label: '6h', value: '6h', title: 'Last 6 hours' },
-                                { label: '12h', value: '12h', title: 'Last 12 hours' },
-                                { label: '24h', value: '24h', title: 'Last 24 hours' },
-                                { label: '7d', value: '7d', title: 'Last 7 days' },
-                                { label: '30d', value: '30d', title: 'Last 30 days' },
-                                { label: 'All', value: 'all', title: 'All time' },
-                            ].map((filter) => (
-                                <button
-                                    key={filter.value}
-                                    onClick={() => setTimeFilter(filter.value)}
-                                    title={`${filter.title}: ${data ? data.users.filter(u => isUserActiveInPeriod(u, filter.value)).length : 0} users active`}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                                        timeFilter === filter.value
-                                            ? 'bg-white text-indigo-600 shadow-sm border border-slate-200'
-                                            : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
-                                    }`}
-                                >
-                                    {filter.label}
-                                </button>
-                            ))}
-                        </div>
-
-                        {/* Refresh */}
-                        <button
-                            id="refresh-btn"
-                            onClick={() => refetchData()}
-                            className={`p-2.5 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-indigo-600 hover:border-indigo-300 transition-all shadow-sm ${loading ? 'animate-pulse' : ''}`}
-                            title="Refresh"
-                            disabled={loading}
-                        >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                            </svg>
-                        </button>
-
-                        {/* Delete All */}
-                        {data && data.users.length > 0 && (
+                            {/* Refresh */}
                             <button
-                                id="delete-all-btn"
-                                onClick={handleDeleteAll}
-                                disabled={deleting}
-                                className="p-2.5 rounded-xl border border-red-200 bg-white text-red-400 hover:text-red-600 hover:border-red-400 hover:bg-red-50 transition-all shadow-sm disabled:opacity-50"
-                                title="Delete All Records"
+                                id="refresh-btn"
+                                onClick={() => refetchData()}
+                                className={`p-2.5 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-indigo-600 hover:border-indigo-300 transition-all shadow-sm ${loading ? 'animate-pulse' : ''}`}
+                                title="Refresh"
+                                disabled={loading}
                             >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                                 </svg>
                             </button>
-                        )}
+
+                            {/* Delete All */}
+                            {data && data.users.length > 0 && (
+                                <button
+                                    id="delete-all-btn"
+                                    onClick={handleDeleteAll}
+                                    disabled={deleting}
+                                    className="p-2.5 rounded-xl border border-red-200 bg-white text-red-400 hover:text-red-600 hover:border-red-400 hover:bg-red-50 transition-all shadow-sm disabled:opacity-50"
+                                    title="Delete All Records"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
+                )}
+
+                {/* ── Analytics Panel (Scrollable & Compact) ── */}
+                {!isFullscreen && showAnalytics && analytics && !loading && !error && (
+                    <div className="shrink-0 px-4 md:px-6 pb-4 max-h-[30vh] md:max-h-[35vh] overflow-y-auto custom-scrollbar border-b border-slate-100 mb-2">
+                        {/* Stats Cards */}
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
+                            {/* Active Users (NEW) */}
+                            <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl p-3 text-white shadow-sm relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full -mr-8 -mt-8"></div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-base relative">🟢</span>
+                                    <span className="text-[10px] font-semibold text-green-100 uppercase tracking-tight">Active Now</span>
+                                </div>
+                                <p className="text-2xl font-bold">{analytics.activeUsersCount}</p>
+                                <p className="text-[9px] text-green-100 mt-0.5">Last 5 minutes</p>
+                            </div>
+
+                            {/* Total Users */}
+                            <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl p-3 text-white shadow-sm">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-base">👥</span>
+                                    <span className="text-[10px] font-semibold text-indigo-100 uppercase tracking-tight">Total Users</span>
+                                </div>
+                                <p className="text-xl font-bold">{analytics.totalUsers}</p>
+                            </div>
+
+                            {/* Total Sessions */}
+                            <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-3 text-white shadow-sm">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-base">🔄</span>
+                                    <span className="text-[10px] font-semibold text-purple-100 uppercase tracking-tight">Sessions</span>
+                                </div>
+                                <p className="text-xl font-bold">{analytics.totalSessions}</p>
+                            </div>
+
+                            {/* Total Messages */}
+                            <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-3 text-white shadow-sm">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-base">💬</span>
+                                    <span className="text-[10px] font-semibold text-emerald-100 uppercase tracking-tight">Msgs</span>
+                                </div>
+                                <p className="text-xl font-bold">{analytics.totalMsgs}</p>
+                            </div>
+
+                            {/* Avg Session Duration */}
+                            <div className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl p-3 text-white shadow-sm">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-base">⏱️</span>
+                                    <span className="text-[10px] font-semibold text-amber-100 uppercase tracking-tight">Avg Time</span>
+                                </div>
+                                <p className="text-xl font-bold">{fmtDuration(analytics.avgDurationMs)}</p>
+                            </div>
+
+                            {/* Channel Breakdown */}
+                            <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
+                                <div className="flex items-center gap-2 mb-1.5">
+                                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-tight">Channels</span>
+                                </div>
+                                <div className="space-y-1.5">
+                                    {analytics.channelBreakdown.map(([ch, count]) => (
+                                        <div key={ch}>
+                                            <div className="flex items-center justify-between text-[10px] mb-0.5">
+                                                <span className="font-medium text-slate-700">{channelIcon(ch)} {ch}</span>
+                                                <span className="text-slate-500">{count}</span>
+                                            </div>
+                                            <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
+                                                <div
+                                                    className={`h-full rounded-full transition-all ${ch.toLowerCase().includes('whatsapp') ? 'bg-emerald-500' :
+                                                        ch.toLowerCase().includes('telegram') ? 'bg-sky-500' : 'bg-slate-400'
+                                                        }`}
+                                                    style={{ width: `${(count / analytics.channelTotal) * 100}%` }}
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Bottom row: Top Users + Common Topics + Time Activity */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            {/* Top Active Users */}
+                            <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-tight">Active Users</span>
+                                </div>
+                                <div className="grid grid-cols-1 gap-1.5">
+                                    {analytics.topUsers.slice(0, 3).map((u, i) => (
+                                        <div key={u.userId} className="flex items-center gap-2 text-[11px]">
+                                            <span className={`w-4 h-4 rounded-full flex items-center justify-center font-bold shrink-0 ${i === 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{i + 1}</span>
+                                            <p className="font-semibold text-slate-800 truncate flex-1">{u.userId}</p>
+                                            <span className={`text-[9px] px-1 py-0 rounded border ${channelColor(u.channel)}`}>{channelIcon(u.channel)}</span>
+                                            <p className="font-bold text-slate-700 shrink-0">{u.msgCount} <span className="font-normal text-slate-400">msgs</span></p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Common Topics */}
+                            <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-tight">Topics</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                    {analytics.topTopics.length > 0 ? (
+                                        analytics.topTopics.slice(0, 8).map(([word, freq], i) => (
+                                            <span
+                                                key={word}
+                                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium bg-slate-50 text-slate-600 border-slate-100`}
+                                            >
+                                                {word}
+                                                <span className="opacity-50">×{freq}</span>
+                                            </span>
+                                        ))
+                                    ) : (
+                                        <p className="text-[10px] text-slate-400">No data</p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Activity by Time Period */}
+                            <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-tight">Activity</span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                    {[
+                                        { label: 'Last 1h', value: '1h' },
+                                        { label: 'Last 2h', value: '2h' },
+                                        { label: 'Last 4h', value: '4h' },
+                                        { label: 'Last 6h', value: '6h' },
+                                        { label: 'Last 12h', value: '12h' },
+                                        { label: 'Last 24h', value: '24h' },
+                                        { label: 'Last 7d', value: '7d' },
+                                        { label: 'Last 30d', value: '30d' },
+                                    ].map((period) => {
+                                        const count = data ? data.users.filter(u => isUserActiveInPeriod(u, period.value)).length : 0;
+                                        const isActive = timeFilter === period.value;
+                                        return (
+                                            <button
+                                                key={period.value}
+                                                onClick={() => setTimeFilter(period.value)}
+                                                className={`text-left p-2 rounded-lg transition-all ${isActive ? 'bg-indigo-50 border border-indigo-200' : 'bg-slate-50 hover:bg-slate-100 border border-transparent'}`}
+                                            >
+                                                <p className={`text-[10px] font-medium uppercase ${isActive ? 'text-indigo-600' : 'text-slate-500'}`}>{period.label}</p>
+                                                <p className={`text-lg font-bold ${isActive ? 'text-indigo-700' : 'text-slate-700'}`}>{count}</p>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
-            )}
 
-            {/* ── Analytics Panel (Scrollable & Compact) ── */}
-            {!isFullscreen && showAnalytics && analytics && !loading && !error && (
-                <div className="shrink-0 px-4 md:px-6 pb-4 max-h-[30vh] md:max-h-[35vh] overflow-y-auto custom-scrollbar border-b border-slate-100 mb-2">
-                    {/* Stats Cards */}
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
-                        {/* Active Users (NEW) */}
-                        <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl p-3 text-white shadow-sm relative overflow-hidden">
-                            <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full -mr-8 -mt-8"></div>
-                            <div className="flex items-center gap-2 mb-1">
-                                <span className="text-base relative">🟢</span>
-                                <span className="text-[10px] font-semibold text-green-100 uppercase tracking-tight">Active Now</span>
-                            </div>
-                            <p className="text-2xl font-bold">{analytics.activeUsersCount}</p>
-                            <p className="text-[9px] text-green-100 mt-0.5">Last 5 minutes</p>
-                        </div>
-
-                        {/* Total Users */}
-                        <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl p-3 text-white shadow-sm">
-                            <div className="flex items-center gap-2 mb-1">
-                                <span className="text-base">👥</span>
-                                <span className="text-[10px] font-semibold text-indigo-100 uppercase tracking-tight">Total Users</span>
-                            </div>
-                            <p className="text-xl font-bold">{analytics.totalUsers}</p>
-                        </div>
-
-                        {/* Total Sessions */}
-                        <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-3 text-white shadow-sm">
-                            <div className="flex items-center gap-2 mb-1">
-                                <span className="text-base">🔄</span>
-                                <span className="text-[10px] font-semibold text-purple-100 uppercase tracking-tight">Sessions</span>
-                            </div>
-                            <p className="text-xl font-bold">{analytics.totalSessions}</p>
-                        </div>
-
-                        {/* Total Messages */}
-                        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-3 text-white shadow-sm">
-                            <div className="flex items-center gap-2 mb-1">
-                                <span className="text-base">💬</span>
-                                <span className="text-[10px] font-semibold text-emerald-100 uppercase tracking-tight">Msgs</span>
-                            </div>
-                            <p className="text-xl font-bold">{analytics.totalMsgs}</p>
-                        </div>
-
-                        {/* Avg Session Duration */}
-                        <div className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl p-3 text-white shadow-sm">
-                            <div className="flex items-center gap-2 mb-1">
-                                <span className="text-base">⏱️</span>
-                                <span className="text-[10px] font-semibold text-amber-100 uppercase tracking-tight">Avg Time</span>
-                            </div>
-                            <p className="text-xl font-bold">{fmtDuration(analytics.avgDurationMs)}</p>
-                        </div>
-
-                        {/* Channel Breakdown */}
-                        <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
-                            <div className="flex items-center gap-2 mb-1.5">
-                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-tight">Channels</span>
-                            </div>
-                            <div className="space-y-1.5">
-                                {analytics.channelBreakdown.map(([ch, count]) => (
-                                    <div key={ch}>
-                                        <div className="flex items-center justify-between text-[10px] mb-0.5">
-                                            <span className="font-medium text-slate-700">{channelIcon(ch)} {ch}</span>
-                                            <span className="text-slate-500">{count}</span>
-                                        </div>
-                                        <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
-                                            <div
-                                                className={`h-full rounded-full transition-all ${ch.toLowerCase().includes('whatsapp') ? 'bg-emerald-500' :
-                                                    ch.toLowerCase().includes('telegram') ? 'bg-sky-500' : 'bg-slate-400'
-                                                    }`}
-                                                style={{ width: `${(count / analytics.channelTotal) * 100}%` }}
-                                            />
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Bottom row: Top Users + Common Topics + Time Activity */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        {/* Top Active Users */}
-                        <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-tight">Active Users</span>
-                            </div>
-                            <div className="grid grid-cols-1 gap-1.5">
-                                {analytics.topUsers.slice(0, 3).map((u, i) => (
-                                    <div key={u.userId} className="flex items-center gap-2 text-[11px]">
-                                        <span className={`w-4 h-4 rounded-full flex items-center justify-center font-bold shrink-0 ${i === 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{i + 1}</span>
-                                        <p className="font-semibold text-slate-800 truncate flex-1">{u.userId}</p>
-                                        <span className={`text-[9px] px-1 py-0 rounded border ${channelColor(u.channel)}`}>{channelIcon(u.channel)}</span>
-                                        <p className="font-bold text-slate-700 shrink-0">{u.msgCount} <span className="font-normal text-slate-400">msgs</span></p>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Common Topics */}
-                        <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-tight">Topics</span>
-                            </div>
-                            <div className="flex flex-wrap gap-1">
-                                {analytics.topTopics.length > 0 ? (
-                                    analytics.topTopics.slice(0, 8).map(([word, freq], i) => (
-                                        <span
-                                            key={word}
-                                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium bg-slate-50 text-slate-600 border-slate-100`}
-                                        >
-                                            {word}
-                                            <span className="opacity-50">×{freq}</span>
-                                        </span>
-                                    ))
-                                ) : (
-                                    <p className="text-[10px] text-slate-400">No data</p>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Activity by Time Period */}
-                        <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-tight">Activity</span>
-                            </div>
-                            <div className="grid grid-cols-2 gap-1.5">
-                                {[
-                                    { label: 'Last 1h', value: '1h' },
-                                    { label: 'Last 2h', value: '2h' },
-                                    { label: 'Last 4h', value: '4h' },
-                                    { label: 'Last 6h', value: '6h' },
-                                    { label: 'Last 12h', value: '12h' },
-                                    { label: 'Last 24h', value: '24h' },
-                                    { label: 'Last 7d', value: '7d' },
-                                    { label: 'Last 30d', value: '30d' },
-                                ].map((period) => {
-                                    const count = data ? data.users.filter(u => isUserActiveInPeriod(u, period.value)).length : 0;
-                                    const isActive = timeFilter === period.value;
-                                    return (
-                                        <button
-                                            key={period.value}
-                                            onClick={() => setTimeFilter(period.value)}
-                                            className={`text-left p-2 rounded-lg transition-all ${isActive ? 'bg-indigo-50 border border-indigo-200' : 'bg-slate-50 hover:bg-slate-100 border border-transparent'}`}
-                                        >
-                                            <p className={`text-[10px] font-medium uppercase ${isActive ? 'text-indigo-600' : 'text-slate-500'}`}>{period.label}</p>
-                                            <p className={`text-lg font-bold ${isActive ? 'text-indigo-700' : 'text-slate-700'}`}>{count}</p>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </div>
+            {/* ── Draggable Divider ── */}
+            {!isFullscreen && (
+                <div 
+                    onMouseDown={startResizing}
+                    className={`h-1.5 w-full cursor-row-resize bg-slate-100 hover:bg-indigo-300 transition-colors flex items-center justify-center group relative z-30 ${isResizing ? 'bg-indigo-400' : ''}`}
+                >
+                    <div className="w-12 h-1 bg-slate-300 group-hover:bg-indigo-100 rounded-full" />
                 </div>
             )}
 
