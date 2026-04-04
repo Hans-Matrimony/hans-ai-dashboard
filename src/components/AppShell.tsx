@@ -1,11 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { Sidebar } from '@/components/Sidebar';
 import { useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+        </div>}>
+            <AppShellContent>{children}</AppShellContent>
+        </Suspense>
+    );
+}
+
+function AppShellContent({ children }: { children: React.ReactNode }) {
     const [sidebarOpen, setSidebarOpen] = useState(true); // Default to true for desktop
     const searchParams = useSearchParams();
     const isFullscreen = searchParams.get('fullscreen') === 'true';

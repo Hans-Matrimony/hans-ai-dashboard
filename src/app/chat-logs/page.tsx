@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, Suspense } from 'react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { useSearchParams } from 'next/navigation';
@@ -104,7 +104,7 @@ const STOP_WORDS = new Set([
 ]);
 
 /* ──────── Main Page ──────── */
-export default function ChatLogsPage() {
+function ChatLogsContent() {
     const [data, setData] = useState<ApiResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -1035,5 +1035,18 @@ export default function ChatLogsPage() {
                 </div>
             )}
         </div>
+    );
+}
+
+export default function ChatLogsPage() {
+    return (
+        <Suspense fallback={<div className="h-screen bg-slate-50 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+                <p className="text-slate-500 font-medium">Loading Chat Logs...</p>
+            </div>
+        </div>}>
+            <ChatLogsContent />
+        </Suspense>
     );
 }
