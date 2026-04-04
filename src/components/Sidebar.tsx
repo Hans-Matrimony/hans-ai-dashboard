@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useEffect } from 'react';
 
@@ -70,6 +70,8 @@ interface SidebarProps {
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
     const pathname = usePathname();
+    const searchParams = useSearchParams();
+    const isFullscreen = searchParams.get('fullscreen') === 'true';
 
     // Close drawer on route change on mobile
     useEffect(() => {
@@ -89,7 +91,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     return (
         <>
             {/* ── Mobile backdrop overlay ── */}
-            {isOpen && (
+            {isOpen && !isFullscreen && (
                 <div
                     className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
                     onClick={onClose}
@@ -103,10 +105,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                     // Base: always fixed, full height, slide animation
                     'fixed left-0 top-0 h-screen w-64 bg-white border-r border-slate-200 flex flex-col z-50',
                     'transition-transform duration-300 ease-in-out shadow-sm',
-                    // Mobile: hidden by default, slide in when open
-                    isOpen ? 'translate-x-0' : '-translate-x-full',
-                    // Desktop: always visible
-                    'md:translate-x-0'
+                    // Mobile & Desktop: hidden by default, slide in when open. Hide completely in fullscreen.
+                    isOpen && !isFullscreen ? 'translate-x-0' : '-translate-x-full'
                 )}
             >
                 {/* Logo + mobile close button */}
@@ -120,10 +120,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                             <p className="text-slate-500 text-xs">Dashboard</p>
                         </div>
                     </Link>
-                    {/* Close button — only visible on mobile */}
+                    {/* Close button — visible on both mobile and desktop */}
                     <button
                         onClick={onClose}
-                        className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
                         aria-label="Close menu"
                     >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

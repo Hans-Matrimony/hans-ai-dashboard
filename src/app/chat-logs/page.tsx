@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import { cn } from '@/lib/utils';
+import { useSearchParams } from 'next/navigation';
 
 /* ──────── Types ──────── */
 interface Message {
@@ -110,6 +112,7 @@ export default function ChatLogsPage() {
     // search / filter state
     const [search, setSearch] = useState('');
     const [channelFilter, setChannelFilter] = useState<string>('all');
+    const [timeFilter, setTimeFilter] = useState<string>('all');
 
     // selection state
     const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -119,8 +122,26 @@ export default function ChatLogsPage() {
     // analytics panel toggle
     const [showAnalytics, setShowAnalytics] = useState(true);
 
+    // fullscreen state
+    const [isFullscreen, setIsFullscreen] = useState(false);
+
     // deleting state
     const [deleting, setDeleting] = useState(false);
+
+    // Toggle fullscreen with URL sync
+    const toggleFullscreen = useCallback(() => {
+        const next = !isFullscreen;
+        setIsFullscreen(next);
+        
+        // Update URL to sync with AppShell/Sidebar
+        const url = new URL(window.location.href);
+        if (next) {
+            url.searchParams.set('fullscreen', 'true');
+        } else {
+            url.searchParams.delete('fullscreen');
+        }
+        window.history.pushState({}, '', url.toString());
+    }, [isFullscreen]);
 
     // Re-fetch helper
     const refetchData = useCallback((showLoading = true) => {
@@ -200,6 +221,25 @@ export default function ChatLogsPage() {
         return () => clearInterval(interval);
     }, [refetchData]);
 
+    // Sync fullscreen state with URL on mount
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('fullscreen') === 'true') {
+            setIsFullscreen(true);
+        }
+    }, []);
+
+    // Handle ESC key to exit fullscreen
+    useEffect(() => {
+        const handleEsc = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && isFullscreen) {
+                toggleFullscreen();
+            }
+        };
+        window.addEventListener('keydown', handleEsc);
+        return () => window.removeEventListener('keydown', handleEsc);
+    }, [isFullscreen, toggleFullscreen]);
+
     // compute unique channels
     const channels = useMemo(() => {
         if (!data) return [];
@@ -212,6 +252,11 @@ export default function ChatLogsPage() {
     const filteredUsers = useMemo(() => {
         if (!data) return [];
         let users = data.users;
+
+        // time filter
+        if (timeFilter !== 'all') {
+            users = users.filter(u => isUserActiveInPeriod(u, timeFilter));
+        }
 
         // channel filter
         if (channelFilter !== 'all') {
@@ -240,7 +285,7 @@ export default function ChatLogsPage() {
         });
 
         return users;
-    }, [data, search, channelFilter]);
+    }, [data, search, channelFilter, timeFilter]);
 
     // total messages for a user
     function totalMessages(u: UserDoc) {
@@ -262,6 +307,28 @@ export default function ChatLogsPage() {
         if (!lastMsg) return false;
         const diff = Date.now() - new Date(lastMsg).getTime();
         return diff < 5 * 60 * 1000; // 5 minutes
+    }
+
+    // check if user is active within a specific time period
+    function isUserActiveInPeriod(u: UserDoc, period: string): boolean {
+        const lastMsg = latestActivity(u);
+        if (!lastMsg) return false;
+        const diff = Date.now() - new Date(lastMsg).getTime();
+
+        const timeMap: Record<string, number> = {
+            '1h': 1 * 60 * 60 * 1000,
+            '2h': 2 * 60 * 60 * 1000,
+            '4h': 4 * 60 * 60 * 1000,
+            '6h': 6 * 60 * 60 * 1000,
+            '12h': 12 * 60 * 60 * 1000,
+            '24h': 24 * 60 * 60 * 1000,
+            '7d': 7 * 24 * 60 * 60 * 1000,
+            '30d': 30 * 24 * 60 * 60 * 1000,
+            'all': Infinity,
+        };
+
+        const maxDiff = timeMap[period] || Infinity;
+        return diff < maxDiff;
     }
 
     /* ──────── Analytics Computations ──────── */
@@ -347,8 +414,9 @@ export default function ChatLogsPage() {
 
     /* ──────── Render ──────── */
     return (
-        <div className="h-screen flex flex-col overflow-x-auto overflow-y-hidden">
+        <div className={`h-screen flex flex-col overflow-x-auto overflow-y-hidden ${isFullscreen ? 'bg-slate-900' : ''}`}>
             {/* ── Header ── */}
+            {!isFullscreen && (
             <div className="shrink-0 p-4 md:p-6 pb-0">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
                     <div>
@@ -356,17 +424,37 @@ export default function ChatLogsPage() {
                         <p className="text-slate-500 text-sm mt-0.5">
                             {data && analytics ? (
                                 <>
-                                    <span className="inline-flex items-center gap-1.5">
-                                        <span className="relative flex h-2 w-2">
-                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                                        </span>
-                                        <span className="font-semibold text-green-600">{analytics.activeUsersCount} active</span>
-                                    </span>
-                                    <span className="mx-2">·</span>
-                                    <span>{data.count} total users</span>
-                                    <span className="mx-2">·</span>
-                                    <span>{data.users.reduce((a, u) => a + totalMessages(u), 0)} messages</span>
+                                    {timeFilter === 'all' ? (
+                                        <>
+                                            <span className="inline-flex items-center gap-1.5">
+                                                <span className="relative flex h-2 w-2">
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                                                </span>
+                                                <span className="font-semibold text-green-600">{analytics.activeUsersCount} active</span>
+                                            </span>
+                                            <span className="mx-2">·</span>
+                                            <span>{data.count} total users</span>
+                                            <span className="mx-2">·</span>
+                                            <span>{data.users.reduce((a, u) => a + totalMessages(u), 0)} messages</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span className="inline-flex items-center gap-1.5">
+                                                <span className="relative flex h-2 w-2">
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                                                </span>
+                                                <span className="font-semibold text-indigo-600">
+                                                    {filteredUsers.length} users
+                                                    <span className="text-indigo-400 font-normal"> active in </span>
+                                                    <span className="font-bold">{timeFilter}</span>
+                                                </span>
+                                            </span>
+                                            <span className="mx-2">·</span>
+                                            <span className="text-slate-400">{data.count} total</span>
+                                        </>
+                                    )}
                                 </>
                             ) : 'Loading…'}
                             {data && (
@@ -437,6 +525,34 @@ export default function ChatLogsPage() {
                             ))}
                         </select>
 
+                        {/* Time filter */}
+                        <div className="flex items-center gap-1.5 bg-slate-50 rounded-xl border border-slate-200 p-1">
+                            {[
+                                { label: '1h', value: '1h', title: 'Last 1 hour' },
+                                { label: '2h', value: '2h', title: 'Last 2 hours' },
+                                { label: '4h', value: '4h', title: 'Last 4 hours' },
+                                { label: '6h', value: '6h', title: 'Last 6 hours' },
+                                { label: '12h', value: '12h', title: 'Last 12 hours' },
+                                { label: '24h', value: '24h', title: 'Last 24 hours' },
+                                { label: '7d', value: '7d', title: 'Last 7 days' },
+                                { label: '30d', value: '30d', title: 'Last 30 days' },
+                                { label: 'All', value: 'all', title: 'All time' },
+                            ].map((filter) => (
+                                <button
+                                    key={filter.value}
+                                    onClick={() => setTimeFilter(filter.value)}
+                                    title={`${filter.title}: ${data ? data.users.filter(u => isUserActiveInPeriod(u, filter.value)).length : 0} users active`}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                                        timeFilter === filter.value
+                                            ? 'bg-white text-indigo-600 shadow-sm border border-slate-200'
+                                            : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
+                                    }`}
+                                >
+                                    {filter.label}
+                                </button>
+                            ))}
+                        </div>
+
                         {/* Refresh */}
                         <button
                             id="refresh-btn"
@@ -467,9 +583,10 @@ export default function ChatLogsPage() {
                     </div>
                 </div>
             </div>
+            )}
 
             {/* ── Analytics Panel (Scrollable & Compact) ── */}
-            {showAnalytics && analytics && !loading && !error && (
+            {!isFullscreen && showAnalytics && analytics && !loading && !error && (
                 <div className="shrink-0 px-4 md:px-6 pb-4 max-h-[30vh] md:max-h-[35vh] overflow-y-auto custom-scrollbar border-b border-slate-100 mb-2">
                     {/* Stats Cards */}
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
@@ -546,15 +663,15 @@ export default function ChatLogsPage() {
                         </div>
                     </div>
 
-                    {/* Bottom row: Top Users + Common Topics */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {/* Bottom row: Top Users + Common Topics + Time Activity */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         {/* Top Active Users */}
                         <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
                             <div className="flex items-center gap-2 mb-2">
                                 <span className="text-xs font-semibold text-slate-500 uppercase tracking-tight">Active Users</span>
                             </div>
                             <div className="grid grid-cols-1 gap-1.5">
-                                {analytics.topUsers.map((u, i) => (
+                                {analytics.topUsers.slice(0, 3).map((u, i) => (
                                     <div key={u.userId} className="flex items-center gap-2 text-[11px]">
                                         <span className={`w-4 h-4 rounded-full flex items-center justify-center font-bold shrink-0 ${i === 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{i + 1}</span>
                                         <p className="font-semibold text-slate-800 truncate flex-1">{u.userId}</p>
@@ -572,7 +689,7 @@ export default function ChatLogsPage() {
                             </div>
                             <div className="flex flex-wrap gap-1">
                                 {analytics.topTopics.length > 0 ? (
-                                    analytics.topTopics.map(([word, freq], i) => (
+                                    analytics.topTopics.slice(0, 8).map(([word, freq], i) => (
                                         <span
                                             key={word}
                                             className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium bg-slate-50 text-slate-600 border-slate-100`}
@@ -584,6 +701,38 @@ export default function ChatLogsPage() {
                                 ) : (
                                     <p className="text-[10px] text-slate-400">No data</p>
                                 )}
+                            </div>
+                        </div>
+
+                        {/* Activity by Time Period */}
+                        <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-tight">Activity</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-1.5">
+                                {[
+                                    { label: 'Last 1h', value: '1h' },
+                                    { label: 'Last 2h', value: '2h' },
+                                    { label: 'Last 4h', value: '4h' },
+                                    { label: 'Last 6h', value: '6h' },
+                                    { label: 'Last 12h', value: '12h' },
+                                    { label: 'Last 24h', value: '24h' },
+                                    { label: 'Last 7d', value: '7d' },
+                                    { label: 'Last 30d', value: '30d' },
+                                ].map((period) => {
+                                    const count = data ? data.users.filter(u => isUserActiveInPeriod(u, period.value)).length : 0;
+                                    const isActive = timeFilter === period.value;
+                                    return (
+                                        <button
+                                            key={period.value}
+                                            onClick={() => setTimeFilter(period.value)}
+                                            className={`text-left p-2 rounded-lg transition-all ${isActive ? 'bg-indigo-50 border border-indigo-200' : 'bg-slate-50 hover:bg-slate-100 border border-transparent'}`}
+                                        >
+                                            <p className={`text-[10px] font-medium uppercase ${isActive ? 'text-indigo-600' : 'text-slate-500'}`}>{period.label}</p>
+                                            <p className={`text-lg font-bold ${isActive ? 'text-indigo-700' : 'text-slate-700'}`}>{count}</p>
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
                     </div>
@@ -617,9 +766,13 @@ export default function ChatLogsPage() {
                     </div>
                 </div>
             ) : (
-                <div className="flex-1 flex overflow-hidden mx-4 md:mx-6 mb-4 md:mb-6 gap-4 min-w-[900px]">
+                <div className={`flex-1 flex overflow-hidden ${isFullscreen ? '' : 'mx-4 md:mx-6 mb-4 md:mb-6'} gap-4 min-w-[900px]`}>
                     {/* ── Left Panel: User List ── */}
-                    <div className={`${selectedUser ? 'hidden md:flex' : 'flex'} flex-col w-full md:w-80 shrink-0 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden`}>
+                    <div className={cn(
+                        selectedUser ? 'hidden md:flex' : 'flex',
+                        "flex-col w-full md:w-80 shrink-0 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden transition-all duration-300",
+                        isFullscreen && "rounded-none border-t-0 border-b-0 border-l-0"
+                    )}>
                         <div className="p-4 border-b border-slate-100">
                             <h2 className="text-sm font-semibold text-slate-700">
                                 Users
@@ -681,7 +834,10 @@ export default function ChatLogsPage() {
 
                     {/* ── Right Panel: Session + Messages ── */}
                     {selectedUser ? (
-                        <div className="flex-1 flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div className={cn(
+                            "flex-1 flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden transition-all duration-300",
+                            isFullscreen && "rounded-none border-0 bg-slate-900"
+                        )}>
                             {/* Session header */}
                             <div className="shrink-0 p-4 border-b border-slate-100">
                                 <div className="flex items-center justify-between">
@@ -721,6 +877,26 @@ export default function ChatLogsPage() {
                                         </div>
                                     )}
 
+                                    {/* Fullscreen Toggle */}
+                                    <button
+                                        onClick={toggleFullscreen}
+                                        className={`p-2 rounded-lg transition-all ${isFullscreen
+                                            ? 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200'
+                                            : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-100'
+                                            }`}
+                                        title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                                    >
+                                        {isFullscreen ? (
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        ) : (
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                                            </svg>
+                                        )}
+                                    </button>
+
                                     {/* Delete User button */}
                                     <button
                                         onClick={() => handleDeleteUser(selectedUser.userId)}
@@ -749,7 +925,7 @@ export default function ChatLogsPage() {
                             </div>
 
                             {/* Messages */}
-                            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-gradient-to-b from-slate-50/50 to-white">
+                            <div className={`flex-1 overflow-y-auto p-4 md:p-6 space-y-4 ${isFullscreen ? 'bg-slate-900' : 'bg-gradient-to-b from-slate-50/50 to-white'}`}>
                                 {selectedSession?.messages.map((msg) => (
                                     <div
                                         key={msg.messageId}
@@ -758,23 +934,25 @@ export default function ChatLogsPage() {
                                         <div
                                             className={`max-w-[80%] md:max-w-[65%] rounded-2xl px-4 py-3 shadow-sm ${msg.role === 'user'
                                                 ? 'bg-indigo-600 text-white rounded-br-md'
-                                                : 'bg-white border border-slate-200 text-slate-800 rounded-bl-md'
+                                                : isFullscreen
+                                                    ? 'bg-slate-800 border border-slate-700 text-slate-100 rounded-bl-md'
+                                                    : 'bg-white border border-slate-200 text-slate-800 rounded-bl-md'
                                                 }`}
                                         >
                                             {/* Role label */}
-                                            <div className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 ${msg.role === 'user' ? 'text-indigo-200' : 'text-slate-400'
+                                            <div className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 ${msg.role === 'user' ? 'text-indigo-200' : isFullscreen ? 'text-slate-400' : 'text-slate-400'
                                                 }`}>
                                                 {msg.role === 'user' ? '👤 User' : '🤖 Assistant'}
                                             </div>
 
                                             {/* Message text */}
-                                            <p className={`text-sm leading-relaxed whitespace-pre-wrap break-words ${msg.role === 'user' ? 'text-white' : 'text-slate-700'
+                                            <p className={`text-sm leading-relaxed whitespace-pre-wrap break-words ${msg.role === 'user' ? 'text-white' : isFullscreen ? 'text-slate-100' : 'text-slate-700'
                                                 }`}>
                                                 {msg.text.replace(/\\n/g, '\n')}
                                             </p>
 
                                             {/* Timestamp */}
-                                            <p className={`text-[10px] mt-2 ${msg.role === 'user' ? 'text-indigo-300' : 'text-slate-400'
+                                            <p className={`text-[10px] mt-2 ${msg.role === 'user' ? 'text-indigo-300' : isFullscreen ? 'text-slate-500' : 'text-slate-400'
                                                 }`}>
                                                 {fmtTime(msg.timestamp)}
                                             </p>
