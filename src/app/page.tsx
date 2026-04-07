@@ -1,8 +1,10 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 
 export default function HomePage() {
-  return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+  // Redirect to dashboard (middleware will handle auth check)
+  redirect('/dashboard');
+}
       {/* Header */}
       <header className="border-b border-slate-200 bg-white/50 backdrop-blur-sm sticky top-0 z-30">
         <div className="container mx-auto px-4 py-4">
