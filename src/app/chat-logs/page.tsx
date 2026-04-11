@@ -113,6 +113,8 @@ function ChatLogsContent() {
     const [search, setSearch] = useState('');
     const [channelFilter, setChannelFilter] = useState<string>('all');
     const [timeFilter, setTimeFilter] = useState<string>('all');
+    const [startDate, setStartDate] = useState<string>('');
+    const [endDate, setEndDate] = useState<string>('');
 
     // selection state
     const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -182,7 +184,13 @@ function ChatLogsContent() {
     // Re-fetch helper
     const refetchData = useCallback((showLoading = true) => {
         if (showLoading) setLoading(true);
-        fetch('/api/chat-logs/messages')
+
+        // Build query parameters
+        const params = new URLSearchParams();
+        if (startDate) params.append('startDate', startDate);
+        if (endDate) params.append('endDate', endDate);
+
+        fetch(`/api/chat-logs/messages?${params.toString()}`)
             .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
             .then((d: ApiResponse) => {
                 setData(d);
@@ -193,7 +201,7 @@ function ChatLogsContent() {
                 setError(err.message || 'Failed to fetch');
                 if (showLoading) setLoading(false);
             });
-    }, []);
+    }, [startDate, endDate]);
 
     // Selection derivations
     const selectedUser = useMemo(() => {
@@ -255,7 +263,7 @@ function ChatLogsContent() {
             refetchData(false); // background refresh
         }, 15000);
         return () => clearInterval(interval);
-    }, [refetchData]);
+    }, [startDate, endDate, refetchData]);
 
     // Sync fullscreen state with URL on mount
     useEffect(() => {
@@ -326,6 +334,23 @@ function ChatLogsContent() {
     // total messages for a user
     function totalMessages(u: UserDoc) {
         return u.sessions.reduce((acc, s) => acc + s.messages.length, 0);
+    }
+
+    // Calculate average engagement time for a user
+    function calculateAvgEngagementTime(u: UserDoc): number {
+        let totalDuration = 0;
+        let validSessions = 0;
+
+        u.sessions.forEach(s => {
+            const start = new Date(s.startTime).getTime();
+            const end = new Date(s.lastMessageTime).getTime();
+            if (!isNaN(start) && !isNaN(end) && end > start) {
+                totalDuration += (end - start);
+                validSessions++;
+            }
+        });
+
+        return validSessions > 0 ? totalDuration / validSessions : 0;
     }
 
     // latest message time for user
@@ -445,7 +470,7 @@ function ChatLogsContent() {
             topUsers,
             topTopics,
         };
-    }, [data, isUserActive, isUserActiveInPeriod, totalMessages]);
+    }, [data, isUserActive, isUserActiveInPeriod, totalMessages, calculateAvgEngagementTime]);
 
     /* ──────── Render ──────── */
     return (
@@ -507,6 +532,38 @@ function ChatLogsContent() {
 
                         {/* Search + Filters */}
                         <div className="flex items-center gap-3 flex-wrap">
+                            {/* Date Range Filter */}
+                            <div className="flex items-center gap-2 bg-slate-50 rounded-xl border border-slate-200 p-1.5">
+                                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                                <input
+                                    type="date"
+                                    value={startDate}
+                                    onChange={e => setStartDate(e.target.value)}
+                                    className="px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                                />
+                                <span className="text-slate-400 text-xs">to</span>
+                                <input
+                                    type="date"
+                                    value={endDate}
+                                    onChange={e => setEndDate(e.target.value)}
+                                    className="px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                                />
+                                {(startDate || endDate) && (
+                                    <button
+                                        onClick={() => {
+                                            setStartDate('');
+                                            setEndDate('');
+                                        }}
+                                        className="px-2 py-1.5 rounded-lg text-xs font-medium text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-all"
+                                        title="Clear date filter"
+                                    >
+                                        Clear
+                                    </button>
+                                )}
+                            </div>
+
                             {/* Analytics Toggle */}
                             {data && analytics && (
                                 <button
@@ -873,7 +930,13 @@ function ChatLogsContent() {
                                                 </div>
                                                 <div className="text-right shrink-0">
                                                     <p className={`text-[11px] font-medium ${active ? 'text-green-600' : 'text-slate-400'}`}>{fmtRelative(latestActivity(user))}</p>
-                                                    <p className="text-[11px] text-slate-400 mt-1">{totalMessages(user)} msgs</p>
+                                                    <div className="flex items-center gap-1 mt-1">
+                                                        <p className="text-[11px] text-slate-400">{totalMessages(user)} msgs</p>
+                                                        <span className="text-slate-300">·</span>
+                                                        <p className="text-[11px] font-medium text-amber-600 flex items-center gap-1">
+                                                            ⏱️ {fmtDuration(calculateAvgEngagementTime(user))}
+                                                        </p>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </button>
