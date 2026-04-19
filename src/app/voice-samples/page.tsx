@@ -119,8 +119,9 @@ export default function VoiceSamplesPage() {
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(null);
+  const [isMockMode, setIsMockMode] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [audioHistory, setAudioHistory] = useState<Array<{voice: VoiceSample; template: Template; url: string; timestamp: number}>>([]);
+  const [audioHistory, setAudioHistory] = useState<Array<{voice: VoiceSample; template: Template; url: string; timestamp: number; isMock: boolean}>>([]);
 
   // Filter voices by gender
   const [genderFilter, setGenderFilter] = useState<'all' | 'male' | 'female'>('all');
@@ -162,6 +163,7 @@ export default function VoiceSamplesPage() {
 
       if (data.success && data.audio_url) {
         setGeneratedAudioUrl(data.audio_url);
+        setIsMockMode(data.mock || false);
 
         // Add to history
         const newHistoryItem = {
@@ -169,6 +171,7 @@ export default function VoiceSamplesPage() {
           template: selectedTemplate,
           url: data.audio_url,
           timestamp: Date.now(),
+          isMock: data.mock || false,
         };
         setAudioHistory([newHistoryItem, ...audioHistory].slice(0, 10));
       } else {
@@ -412,7 +415,7 @@ export default function VoiceSamplesPage() {
                   )}
 
                   {/* Audio Player */}
-                  {generatedAudioUrl && (
+                  {generatedAudioUrl && !isMockMode && (
                     <div className="bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-4">
                       <div className="flex items-center gap-2 mb-3">
                         <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -429,6 +432,31 @@ export default function VoiceSamplesPage() {
                       <p className="text-xs text-indigo-600 mt-2">💡 This is 100% FREE using Edge TTS</p>
                     </div>
                   )}
+
+                  {/* Mock Mode Message */}
+                  {generatedAudioUrl && isMockMode && (
+                    <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-4">
+                      <div className="flex items-start gap-3">
+                        <svg className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div className="flex-1">
+                          <h4 className="text-sm font-semibold text-amber-900 mb-2">🧪 Testing Mode</h4>
+                          <p className="text-xs text-amber-800 leading-relaxed">
+                            <strong>UI Test Successful!</strong> You selected:
+                          </p>
+                          <ul className="text-xs text-amber-800 mt-2 space-y-1">
+                            <li>✅ Voice: <span className="font-semibold">{selectedVoice?.name}</span></li>
+                            <li>✅ Template: <span className="font-semibold">{selectedTemplate?.name}</span></li>
+                            <li>✅ Message: "<span className="italic">{selectedTemplate?.text}</span>"</li>
+                          </ul>
+                          <p className="text-xs text-amber-700 mt-3 pt-2 border-t border-amber-200">
+                            ⚠️ Backend integration (Edge TTS) not connected yet. Audio preview will be available after implementing the Python backend service.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -439,15 +467,24 @@ export default function VoiceSamplesPage() {
                 <h2 className="text-lg font-semibold text-slate-900 mb-4">Recent Generations</h2>
                 <div className="space-y-3">
                   {audioHistory.slice(0, 5).map((item, index) => (
-                    <div key={index} className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                    <div key={index} className={`rounded-lg p-3 border ${item.isMock ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-semibold text-slate-900">{item.voice.name}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-slate-900">{item.voice.name}</span>
+                          {item.isMock && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Test</span>
+                          )}
+                        </div>
                         <span className="text-xs text-slate-500">
                           {new Date(item.timestamp).toLocaleTimeString()}
                         </span>
                       </div>
                       <p className="text-xs text-slate-600 mb-2">"{item.template.text}"</p>
-                      <audio controls src={item.url} className="w-full" style={{ maxHeight: '60px' }} />
+                      {!item.isMock ? (
+                        <audio controls src={item.url} className="w-full" style={{ maxHeight: '60px' }} />
+                      ) : (
+                        <div className="text-xs text-amber-700 italic">Backend integration pending - Test mode</div>
+                      )}
                     </div>
                   ))}
                 </div>
