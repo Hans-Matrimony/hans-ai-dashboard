@@ -17,6 +17,7 @@ export interface PaymentFunnelData {
   average_order_value_inr: number;  // in rupees
   by_plan: PlanPerformance[];
   daily_trend: DailyTrend[];
+  completed_payment_user_ids?: string[];  // NEW: User IDs who completed payments
 }
 
 export interface PlanPerformance {

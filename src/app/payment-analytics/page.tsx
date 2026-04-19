@@ -176,13 +176,56 @@ export default function PaymentAnalyticsPage() {
             {/* Payments Completed */}
             <Card className="border-l-4 border-l-green-500">
               <div className="flex items-center justify-between">
-                <div>
+                <div className="flex-1">
                   <p className="text-sm text-slate-600 dark:text-slate-400">Payments Completed</p>
                   <p className="text-3xl font-bold text-slate-900 dark:text-white mt-1">
                     {analytics.payments_completed.toLocaleString()}
                   </p>
+                  {analytics.completed_payment_user_ids && analytics.completed_payment_user_ids.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Users who paid:</p>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => {
+                              const slider = document.getElementById('userIdsSlider');
+                              if (slider) slider.scrollBy({ left: -200, behavior: 'smooth' });
+                            }}
+                            className="text-xs bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 px-2 py-1 rounded transition-colors"
+                            disabled={analytics.completed_payment_user_ids.length <= 3}
+                          >
+                            ←
+                          </button>
+                          <button
+                            onClick={() => {
+                              const slider = document.getElementById('userIdsSlider');
+                              if (slider) slider.scrollBy({ left: 200, behavior: 'smooth' });
+                            }}
+                            className="text-xs bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 px-2 py-1 rounded transition-colors"
+                            disabled={analytics.completed_payment_user_ids.length <= 3}
+                          >
+                            →
+                          </button>
+                        </div>
+                      </div>
+                      <div
+                        id="userIdsSlider"
+                        className="flex gap-1 overflow-x-auto scroll-smooth pb-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent"
+                        style={{ scrollbarWidth: 'thin' }}
+                      >
+                        {analytics.completed_payment_user_ids.map((userId, index) => (
+                          <span
+                            key={index}
+                            className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-2 py-1 rounded whitespace-nowrap"
+                          >
+                            {userId}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-lg ml-3">
                   <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
                 </div>
               </div>

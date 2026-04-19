@@ -1,0 +1,28 @@
+FROM python:3.11-slim
+
+LABEL maintainer="Hans AI <admin@hans-ai.com>"
+LABEL description="Edge TTS Server for Voice Samples Testing"
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements-tts-server.txt /app/
+RUN pip install --no-cache-dir -r requirements-tts-server.txt
+
+# Copy server code
+COPY tts-server.py /app/
+
+# Expose port
+EXPOSE 8765
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8765/health')"
+
+# Run server
+CMD ["python", "tts-server.py"]

@@ -75,7 +75,8 @@ export async function GET(request: NextRequest) {
         average_order_value: 0,
         average_order_value_inr: 0,
         by_plan: [],
-        daily_trend: []
+        daily_trend: [],
+        completed_payment_user_ids: []  // NEW: Empty array on error
       },
       { status: 500 }
     );
