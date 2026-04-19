@@ -11,6 +11,17 @@ interface Message {
     role: 'user' | 'assistant';
     text: string;
     timestamp: string;
+    messageType?: string;
+    metadata?: {
+        delivery_status?: 'success' | 'failed';
+        message_id?: string;
+        error?: string;
+        topic?: string;
+        language?: string;
+        hours_inactive?: number;
+        timestamp?: string;
+        dob?: string;
+    };
 }
 
 interface Session {
@@ -67,6 +78,48 @@ function channelColor(ch: string) {
     if (ch?.toLowerCase().includes('telegram')) return 'bg-sky-50 text-sky-700 border-sky-200';
     if (ch?.toLowerCase().includes('whatsapp')) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
     return 'bg-slate-50 text-slate-600 border-slate-200';
+}
+
+function getMessageTypeBadge(msgType: string) {
+    if (!msgType || msgType === 'text') return null;
+
+    const badges: Record<string, { text: string; color: string; icon: string }> = {
+        'proactive_nudge': { text: 'Proactive', color: 'bg-blue-50 text-blue-700 border-blue-200', icon: '💬' },
+        'proactive_nudge_failed': { text: 'Proactive (Failed)', color: 'bg-red-50 text-red-700 border-red-200', icon: '❌' },
+        'daily_horoscope': { text: 'Horoscope', color: 'bg-purple-50 text-purple-700 border-purple-200', icon: '🔮' },
+        'daily_horoscope_failed': { text: 'Horoscope (Failed)', color: 'bg-red-50 text-red-700 border-red-200', icon: '❌' },
+    };
+
+    const badge = badges[msgType];
+    if (!badge) return null;
+
+    return (
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${badge.color}`}>
+            {badge.icon} {badge.text}
+        </span>
+    );
+}
+
+function getDeliveryStatusBadge(metadata?: Message['metadata']) {
+    if (!metadata?.delivery_status) return null;
+
+    if (metadata.delivery_status === 'success') {
+        return (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-50 text-green-700 border border-green-200">
+                ✓ Delivered
+            </span>
+        );
+    }
+
+    if (metadata.delivery_status === 'failed') {
+        return (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-50 text-red-700 border border-red-200" title={metadata.error}>
+                ✗ Failed: {metadata.error || 'Unknown error'}
+            </span>
+        );
+    }
+
+    return null;
 }
 
 function fmtDuration(ms: number) {
@@ -1053,10 +1106,19 @@ function ChatLogsContent() {
                                                     : 'bg-white border border-slate-200 text-slate-800 rounded-bl-md'
                                                 }`}
                                         >
-                                            {/* Role label */}
-                                            <div className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 ${msg.role === 'user' ? 'text-indigo-200' : isFullscreen ? 'text-slate-400' : 'text-slate-400'
-                                                }`}>
-                                                {msg.role === 'user' ? '👤 User' : '🤖 Assistant'}
+                                            {/* Message type and delivery badges */}
+                                            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                                                {/* Role label */}
+                                                <span className={`text-[10px] font-bold uppercase tracking-wider ${msg.role === 'user' ? 'text-indigo-200' : isFullscreen ? 'text-slate-400' : 'text-slate-400'
+                                                    }`}>
+                                                    {msg.role === 'user' ? '👤 User' : '🤖 Assistant'}
+                                                </span>
+
+                                                {/* Message type badge */}
+                                                {getMessageTypeBadge(msg.messageType || '')}
+
+                                                {/* Delivery status badge */}
+                                                {getDeliveryStatusBadge(msg.metadata)}
                                             </div>
 
                                             {/* Message text */}
@@ -1064,6 +1126,29 @@ function ChatLogsContent() {
                                                 }`}>
                                                 {msg.text.replace(/\\n/g, '\n')}
                                             </p>
+
+                                            {/* Additional metadata details for system messages */}
+                                            {msg.metadata && (msg.metadata.topic || msg.metadata.language || msg.metadata.hours_inactive) && (
+                                                <div className={`mt-2 pt-2 border-t ${msg.role === 'user' ? 'border-indigo-400/30' : isFullscreen ? 'border-slate-700' : 'border-slate-200'}`}>
+                                                    <div className="flex flex-wrap gap-2 text-[10px]">
+                                                        {msg.metadata.topic && (
+                                                            <span className={`inline-flex items-center gap-1 ${msg.role === 'user' ? 'text-indigo-200' : isFullscreen ? 'text-slate-400' : 'text-slate-500'}`}>
+                                                                📌 Topic: {msg.metadata.topic}
+                                                            </span>
+                                                        )}
+                                                        {msg.metadata.language && (
+                                                            <span className={`inline-flex items-center gap-1 ${msg.role === 'user' ? 'text-indigo-200' : isFullscreen ? 'text-slate-400' : 'text-slate-500'}`}>
+                                                                🌐 {msg.metadata.language === 'hi' ? 'Hindi' : msg.metadata.language === 'en' ? 'English' : msg.metadata.language}
+                                                            </span>
+                                                        )}
+                                                        {msg.metadata.hours_inactive && (
+                                                            <span className={`inline-flex items-center gap-1 ${msg.role === 'user' ? 'text-indigo-200' : isFullscreen ? 'text-slate-400' : 'text-slate-500'}`}>
+                                                                ⏰ Inactive: {msg.metadata.hours_inactive}h
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             {/* Timestamp */}
                                             <p className={`text-[10px] mt-2 ${msg.role === 'user' ? 'text-indigo-300' : isFullscreen ? 'text-slate-500' : 'text-slate-400'
