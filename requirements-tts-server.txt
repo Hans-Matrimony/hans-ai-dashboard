@@ -1,0 +1,7 @@
+# Edge TTS Server for Voice Samples Testing
+# Install: pip install -r requirements-tts-server.txt
+
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+edge-tts==6.1.9
+python-multipart==0.0.6

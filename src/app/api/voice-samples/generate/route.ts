@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Call Python backend Edge TTS service
-    const pythonBackendUrl = process.env.PYTHON_BACKEND_URL || 'http://localhost:8003';
+    const pythonBackendUrl = process.env.PYTHON_BACKEND_URL || 'http://localhost:8765';
 
     try {
       const response = await fetch(`${pythonBackendUrl}/voice-samples/generate`, {
