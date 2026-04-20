@@ -184,6 +184,7 @@ function ChatLogsContent() {
     const [topHeight, setTopHeight] = useState<number | null>(null);
     const [isResizing, setIsResizing] = useState(false);
     const topSectionRef = useRef<HTMLDivElement>(null);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const startResizing = useCallback((e: React.MouseEvent) => {
         setIsResizing(true);
@@ -336,6 +337,13 @@ function ChatLogsContent() {
         window.addEventListener('keydown', handleEsc);
         return () => window.removeEventListener('keydown', handleEsc);
     }, [isFullscreen, toggleFullscreen]);
+
+    // Auto-scroll to bottom (latest messages) when session or messages change
+    useEffect(() => {
+        if (selectedSession && messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [selectedSession, selectedSession?.messages.length]);
 
     // compute unique channels
     const channels = useMemo(() => {
@@ -1164,6 +1172,9 @@ function ChatLogsContent() {
                                         <p className="text-sm text-slate-400">No messages in this session</p>
                                     </div>
                                 )}
+
+                                {/* Invisible div for auto-scrolling to bottom */}
+                                <div ref={messagesEndRef} />
                             </div>
                         </div>
                     ) : (
