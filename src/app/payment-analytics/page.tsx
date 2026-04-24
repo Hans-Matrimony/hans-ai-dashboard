@@ -3,6 +3,7 @@
 /**
  * Payment Analytics Page
  * Displays payment funnel metrics, conversion rates, and revenue tracking
+ * Modern UI with enhanced user experience
  */
 
 import { useState, useEffect } from 'react';
@@ -16,7 +17,13 @@ import {
   XCircle,
   TrendingUp,
   BarChart3,
-  Calendar
+  Calendar,
+  Users,
+  ArrowUpRight,
+  Activity,
+  Zap,
+  Eye,
+  Filter
 } from 'lucide-react';
 import { PaymentFunnelData, PlanPerformance } from '@/lib/payment-analytics-types';
 
@@ -41,6 +48,7 @@ export default function PaymentAnalyticsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d'>('7d');
+  const [showAllUsersModal, setShowAllUsersModal] = useState(false);
 
   useEffect(() => {
     fetchAnalytics();
@@ -51,7 +59,7 @@ export default function PaymentAnalyticsPage() {
       if (showLoading) setLoading(true);
       setError(null);
 
-      const endDate = new Date().toISOString();
+      const endDate = new Date();
       const startDate = new Date();
       if (dateRange === '7d') startDate.setDate(startDate.getDate() - 7);
       else if (dateRange === '30d') startDate.setDate(startDate.getDate() - 30);
@@ -59,7 +67,7 @@ export default function PaymentAnalyticsPage() {
 
       const data = await getPaymentAnalytics({
         start_date: startDate.toISOString(),
-        end_date: endDate
+        end_date: endDate.toISOString()
       });
 
       setAnalytics(data);
@@ -85,44 +93,62 @@ export default function PaymentAnalyticsPage() {
     if (!analytics) return '';
     const start = new Date(analytics.period.start);
     const end = new Date(analytics.period.end);
-    return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
+    return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+  };
+
+  // Gradient backgrounds for cards
+  const gradients = {
+    blue: 'from-blue-500 via-blue-600 to-blue-700',
+    green: 'from-emerald-500 via-emerald-600 to-teal-700',
+    purple: 'from-violet-500 via-purple-600 to-indigo-700',
+    amber: 'from-amber-500 via-orange-500 to-red-500',
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
-          <RefreshCw className="w-8 h-8 animate-spin text-primary-600 mx-auto mb-4" />
-          <p className="text-slate-600 dark:text-slate-400">Loading payment analytics...</p>
+          <div className="relative w-16 h-16 mx-auto mb-4">
+            <div className="absolute inset-0 rounded-full border-4 border-slate-200 dark:border-slate-700"></div>
+            <div className="absolute inset-0 rounded-full border-4 border-t-transparent border-r-transparent border-b-indigo-500 border-l-indigo-500 animate-spin"></div>
+          </div>
+          <p className="text-slate-600 dark:text-slate-400 font-medium">Loading payment analytics...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-7xl">
+    <div className="container mx-auto px-4 py-6 max-w-7xl">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
-            <DollarSign className="w-8 h-8 text-primary-600" />
-            Payment Analytics
-          </h1>
-          <p className="text-slate-600 dark:text-slate-400 mt-2">
-            Track payment conversions, revenue, and user behavior
-          </p>
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl shadow-lg shadow-indigo-500/30">
+              <DollarSign className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 dark:from-white dark:to-slate-300 bg-clip-text text-transparent">
+                Payment Analytics
+              </h1>
+              <p className="text-slate-500 dark:text-slate-400 text-sm mt-0.5">
+                Track conversions, revenue, and user behavior
+              </p>
+            </div>
+          </div>
         </div>
+
         <div className="flex items-center gap-3">
           {/* Date Range Selector */}
-          <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
+          <div className="flex bg-slate-100 dark:bg-slate-800/50 rounded-xl p-1.5 shadow-sm">
             {(['7d', '30d', '90d'] as const).map((range) => (
               <button
                 key={range}
                 onClick={() => setDateRange(range)}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                   dateRange === range
-                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-md'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white/50 dark:hover:bg-slate-700/50'
                 }`}
               >
                 {range === '7d' ? '7 Days' : range === '30d' ? '30 Days' : '90 Days'}
@@ -134,7 +160,7 @@ export default function PaymentAnalyticsPage() {
             size="sm"
             onClick={handleRefresh}
             disabled={refreshing}
-            className="gap-2"
+            className="gap-2 shadow-sm"
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
             Refresh
@@ -143,184 +169,229 @@ export default function PaymentAnalyticsPage() {
       </div>
 
       {error && (
-        <Card className="mb-6 border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
-          <p className="text-red-800 dark:text-red-200">{error}</p>
+        <Card className="mb-6 border-red-200 dark:border-red-800 bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-900/20 dark:to-orange-900/20">
+          <div className="flex items-center gap-3">
+            <XCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+            <p className="text-red-800 dark:text-red-200">{error}</p>
+          </div>
         </Card>
       )}
 
       {analytics && (
         <>
           {/* Period Display */}
-          <div className="mb-6 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+          <div className="mb-6 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/30 px-4 py-2 rounded-xl w-fit">
             <Calendar className="w-4 h-4" />
-            <span>{formatDateRange()}</span>
+            <span className="font-medium">{formatDateRange()}</span>
           </div>
 
-          {/* Key Metrics Cards */}
+          {/* Key Metrics Cards - Modern Gradient Design */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             {/* Button Clicks */}
-            <Card className="border-l-4 border-l-blue-500">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">Button Clicks</p>
-                  <p className="text-3xl font-bold text-slate-900 dark:text-white mt-1">
-                    {analytics.button_clicks.toLocaleString()}
-                  </p>
+            <Card className="relative overflow-hidden border-0 shadow-lg shadow-blue-500/10">
+              <div className={`absolute inset-0 bg-gradient-to-br ${gradients.blue} opacity-5`}></div>
+              <div className="relative p-5">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="p-2.5 bg-blue-100 dark:bg-blue-900/30 rounded-xl">
+                    <MousePointerClick className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <span className="text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2.5 py-1 rounded-full">
+                    Total
+                  </span>
                 </div>
-                <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-                  <MousePointerClick className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                </div>
+                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mb-1">Button Clicks</p>
+                <p className="text-3xl font-bold text-slate-900 dark:text-white">
+                  {analytics.button_clicks.toLocaleString()}
+                </p>
               </div>
             </Card>
 
-            {/* Payments Completed */}
-            <Card className="border-l-4 border-l-green-500">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <p className="text-sm text-slate-600 dark:text-slate-400">Payments Completed</p>
-                  <p className="text-3xl font-bold text-slate-900 dark:text-white mt-1">
-                    {analytics.payments_completed.toLocaleString()}
-                  </p>
+            {/* Payments Completed - Enhanced with Users */}
+            <Card className="relative overflow-hidden border-0 shadow-lg shadow-emerald-500/10">
+              <div className={`absolute inset-0 bg-gradient-to-br ${gradients.green} opacity-5`}></div>
+              <div className="relative p-5">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="p-2.5 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl">
+                    <CheckCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2.5 py-1 rounded-full">
+                    Success
+                  </span>
+                </div>
+                <div className="flex items-end justify-between">
+                  <div>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mb-1">Payments</p>
+                    <p className="text-3xl font-bold text-slate-900 dark:text-white">
+                      {analytics.payments_completed.toLocaleString()}
+                    </p>
+                  </div>
                   {analytics.completed_payment_user_ids && analytics.completed_payment_user_ids.length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-                      <div className="flex items-center justify-between mb-1">
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Users who paid:</p>
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => {
-                              const slider = document.getElementById('userIdsSlider');
-                              if (slider) slider.scrollBy({ left: -200, behavior: 'smooth' });
-                            }}
-                            className="text-xs bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 px-2 py-1 rounded transition-colors"
-                            disabled={analytics.completed_payment_user_ids.length <= 3}
-                          >
-                            ←
-                          </button>
-                          <button
-                            onClick={() => {
-                              const slider = document.getElementById('userIdsSlider');
-                              if (slider) slider.scrollBy({ left: 200, behavior: 'smooth' });
-                            }}
-                            className="text-xs bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 px-2 py-1 rounded transition-colors"
-                            disabled={analytics.completed_payment_user_ids.length <= 3}
-                          >
-                            →
-                          </button>
-                        </div>
-                      </div>
-                      <div
-                        id="userIdsSlider"
-                        className="flex gap-1 overflow-x-auto scroll-smooth pb-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent"
-                        style={{ scrollbarWidth: 'thin' }}
-                      >
-                        {analytics.completed_payment_user_ids.map((userId, index) => (
-                          <span
-                            key={index}
-                            className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-2 py-1 rounded whitespace-nowrap"
-                          >
-                            {userId}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
+                    <button
+                      onClick={() => setShowAllUsersModal(true)}
+                      className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 px-2.5 py-1.5 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors"
+                      title={`View all ${analytics.completed_payment_user_ids.length} users`}
+                    >
+                      <Users className="w-3.5 h-3.5" />
+                      {analytics.completed_payment_user_ids.length} users
+                      <ArrowUpRight className="w-3 h-3" />
+                    </button>
                   )}
                 </div>
-                <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-lg ml-3">
-                  <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
-                </div>
+
+                {/* Compact Users Display */}
+                {analytics.completed_payment_user_ids && analytics.completed_payment_user_ids.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700">
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-emerald-200 dark:scrollbar-thumb-emerald-800 scrollbar-track-transparent">
+                      {analytics.completed_payment_user_ids.slice(0, 5).map((userId, index) => (
+                        <span
+                          key={index}
+                          className="text-xs bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 px-2 py-1 rounded-lg whitespace-nowrap font-medium border border-emerald-100 dark:border-emerald-800"
+                        >
+                          {userId}
+                        </span>
+                      ))}
+                      {analytics.completed_payment_user_ids.length > 5 && (
+                        <span className="text-xs text-slate-500 dark:text-slate-400 px-2 py-1 whitespace-nowrap">
+                          +{analytics.completed_payment_user_ids.length - 5} more
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </Card>
 
             {/* Conversion Rate */}
-            <Card className="border-l-4 border-l-purple-500">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">Conversion Rate</p>
-                  <p className="text-3xl font-bold text-slate-900 dark:text-white mt-1">
-                    {analytics.conversion_rate.toFixed(1)}%
-                  </p>
+            <Card className="relative overflow-hidden border-0 shadow-lg shadow-violet-500/10">
+              <div className={`absolute inset-0 bg-gradient-to-br ${gradients.purple} opacity-5`}></div>
+              <div className="relative p-5">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="p-2.5 bg-violet-100 dark:bg-violet-900/30 rounded-xl">
+                    <TrendingUp className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                  </div>
+                  {analytics.conversion_rate > 0 && (
+                    <span className="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-full">
+                      <Activity className="w-3 h-3" />
+                      Active
+                    </span>
+                  )}
                 </div>
-                <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-                  <TrendingUp className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mb-1">Conversion Rate</p>
+                <div className="flex items-baseline gap-1">
+                  <p className="text-3xl font-bold text-slate-900 dark:text-white">
+                    {analytics.conversion_rate.toFixed(1)}
+                  </p>
+                  <span className="text-lg text-slate-400">%</span>
                 </div>
               </div>
             </Card>
 
             {/* Revenue */}
-            <Card className="border-l-4 border-l-amber-500">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">Revenue</p>
-                  <p className="text-3xl font-bold text-slate-900 dark:text-white mt-1">
-                    {formatCurrency(analytics.total_revenue)}
-                  </p>
+            <Card className="relative overflow-hidden border-0 shadow-lg shadow-amber-500/10">
+              <div className={`absolute inset-0 bg-gradient-to-br ${gradients.amber} opacity-5`}</div>
+              <div className="relative p-5">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="p-2.5 bg-amber-100 dark:bg-amber-900/30 rounded-xl">
+                    <Zap className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <span className="text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2.5 py-1 rounded-full">
+                    Revenue
+                  </span>
                 </div>
-                <div className="p-3 bg-amber-100 dark:bg-amber-900/30 rounded-lg">
-                  <DollarSign className="w-6 h-6 text-amber-600 dark:text-amber-400" />
-                </div>
+                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mb-1">Total Earnings</p>
+                <p className="text-3xl font-bold text-slate-900 dark:text-white">
+                  {formatCurrency(analytics.total_revenue)}
+                </p>
               </div>
             </Card>
           </div>
 
-          {/* Conversion Funnel */}
-          <Card className="mb-8">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-6">
-              Conversion Funnel
-            </h3>
-            <div className="space-y-4">
-              {/* Funnel Steps */}
+          {/* Conversion Funnel - Modern Design */}
+          <Card className="mb-8 border-slate-200 dark:border-slate-700">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg">
+                  <BarChart3 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Conversion Funnel</h3>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                <Eye className="w-4 h-4" />
+                <span>Click → Pay Journey</span>
+              </div>
+            </div>
+
+            <div className="space-y-5">
               {[
                 {
                   label: 'Button Clicks',
                   count: analytics.button_clicks,
                   icon: MousePointerClick,
-                  color: 'blue'
+                  color: 'blue',
+                  gradient: 'from-blue-500 to-blue-600'
                 },
                 {
                   label: 'Payments Completed',
                   count: analytics.payments_completed,
                   icon: CheckCircle,
-                  color: 'green'
+                  color: 'emerald',
+                  gradient: 'from-emerald-500 to-teal-600'
                 }
               ].map((step, index) => {
                 const Icon = step.icon;
                 const maxCount = analytics.button_clicks || 1;
-                const width = Math.max((step.count / maxCount) * 100, 5);
+                const width = Math.max((step.count / maxCount) * 100, 3);
+                const percentage = analytics.button_clicks > 0
+                  ? ((step.count / analytics.button_clicks) * 100).toFixed(1)
+                  : '0';
 
                 return (
                   <div key={index}>
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-3">
                         <div className={`p-2 bg-${step.color}-100 dark:bg-${step.color}-900/30 rounded-lg`}>
-                          <Icon className={`w-5 h-5 text-${step.color}-600 dark:text-${step.color}-400`} />
+                          <Icon className={`w-4 h-4 text-${step.color}-600 dark:text-${step.color}-400`} />
                         </div>
-                        <span className="font-medium text-slate-900 dark:text-white">
+                        <span className="font-medium text-slate-700 dark:text-slate-300">
                           {step.label}
                         </span>
                       </div>
-                      <span className="text-lg font-bold text-slate-900 dark:text-white">
-                        {step.count.toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="h-8 bg-slate-100 dark:bg-slate-800 rounded-lg overflow-hidden">
-                      <div
-                        className={`h-full bg-${step.color}-500 transition-all duration-500 rounded-lg flex items-center justify-end pr-3`}
-                        style={{ width: `${width}%` }}
-                      >
-                        <span className="text-xs font-medium text-white">
-                          {width > 15 && `${width.toFixed(0)}%`}
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg font-bold text-slate-900 dark:text-white">
+                          {step.count.toLocaleString()}
                         </span>
+                        {step.count > 0 && (
+                          <span className="text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-full">
+                            {percentage}%
+                          </span>
+                        )}
                       </div>
                     </div>
-                    {index < 1 && (
+
+                    {/* Funnel Bar */}
+                    <div className="relative h-10 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden">
+                      <div
+                        className={`absolute inset-y-0 left-0 h-full bg-gradient-to-r ${step.gradient} transition-all duration-700 ease-out rounded-xl flex items-center justify-end pr-4`}
+                        style={{ width: `${width}%` }}
+                      >
+                        {width > 20 && (
+                          <span className="text-xs font-semibold text-white drop-shadow-sm">
+                            {percentage}%
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Connector Arrow */}
+                    {index < 1 && analytics.payments_completed > 0 && (
                       <div className="flex justify-center my-2">
                         <div className="flex flex-col items-center">
-                          <div className="text-xs text-slate-500 dark:text-slate-400">
+                          <div className="text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 px-3 py-1 rounded-full border border-slate-200 dark:border-slate-700">
                             {analytics.button_clicks > 0
                               ? `${((analytics.payments_completed / analytics.button_clicks) * 100).toFixed(1)}% convert`
                               : 'N/A'}
                           </div>
-                          <div className="w-px h-4 bg-slate-300 dark:bg-slate-700"></div>
+                          <ArrowUpRight className="w-4 h-4 text-slate-300 dark:text-slate-600 rotate-90 my-1" />
                         </div>
                       </div>
                     )}
@@ -333,36 +404,39 @@ export default function PaymentAnalyticsPage() {
           {/* Plan Performance & Daily Trend */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
             {/* Plan Performance */}
-            <Card>
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
-                Performance by Plan
-              </h3>
+            <Card className="border-slate-200 dark:border-slate-700">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                  <Filter className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Performance by Plan</h3>
+              </div>
               {analytics.by_plan && analytics.by_plan.length > 0 ? (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {analytics.by_plan.map((plan: PlanPerformance) => (
-                    <div key={plan.plan_id} className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
+                    <div key={plan.plan_id} className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700 transition-colors">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="font-medium text-slate-900 dark:text-white">
+                        <span className="font-semibold text-slate-900 dark:text-white">
                           {plan.plan_name}
                         </span>
-                        <span className="text-sm text-slate-600 dark:text-slate-400">
+                        <span className="text-sm text-slate-500 dark:text-slate-400">
                           {plan.clicks} clicks
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-green-600 dark:text-green-400">
-                          {plan.conversions} conversions
+                        <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                          {plan.conversions} paid
                         </span>
-                        <span className="font-semibold text-slate-900 dark:text-white">
+                        <span className="font-bold text-slate-900 dark:text-white">
                           {formatCurrency(plan.revenue)}
                         </span>
                       </div>
                       {plan.clicks > 0 && (
-                        <div className="mt-2 h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                        <div className="mt-3 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-green-500 rounded-full"
+                            className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-500"
                             style={{
-                              width: `${(plan.conversions / plan.clicks) * 100}%`
+                              width: `${Math.max((plan.conversions / plan.clicks) * 100, 3)}%`
                             }}
                           />
                         </div>
@@ -371,40 +445,44 @@ export default function PaymentAnalyticsPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-slate-500 dark:text-slate-400 text-center py-8">
-                  No plan data available for this period
-                </p>
+                <div className="text-center py-12">
+                  <BarChart3 className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
+                  <p className="text-slate-500 dark:text-slate-400">No plan data for this period</p>
+                </div>
               )}
             </Card>
 
             {/* Daily Trend */}
-            <Card>
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
-                Daily Trend
-              </h3>
+            <Card className="border-slate-200 dark:border-slate-700">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                  <Activity className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Daily Trend</h3>
+              </div>
               {analytics.daily_trend && analytics.daily_trend.length > 0 ? (
-                <div className="space-y-3 max-h-64 overflow-y-auto">
+                <div className="space-y-2.5 max-h-72 overflow-y-auto pr-2">
                   {analytics.daily_trend.slice(-10).reverse().map((day, index) => {
                     const maxClicks = Math.max(...analytics.daily_trend.map(d => d.clicks), 1);
-                    const clickWidth = (day.clicks / maxClicks) * 100;
+                    const clickWidth = Math.max((day.clicks / maxClicks) * 100, 5);
 
                     return (
-                      <div key={index} className="flex items-center gap-3">
-                        <div className="w-24 text-xs text-slate-600 dark:text-slate-400 shrink-0">
+                      <div key={index} className="flex items-center gap-3 group">
+                        <div className="w-20 text-xs text-slate-500 dark:text-slate-400 shrink-0 font-medium">
                           {new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                         </div>
-                        <div className="flex-1 h-8 bg-slate-100 dark:bg-slate-800 rounded-lg overflow-hidden relative">
+                        <div className="flex-1 h-10 bg-slate-100 dark:bg-slate-800 rounded-lg overflow-hidden relative group-hover:bg-slate-200 dark:group-hover:bg-slate-700 transition-colors">
                           <div
-                            className="h-full bg-blue-500 absolute left-0 top-0 rounded-lg"
+                            className="absolute inset-y-0 left-0 h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-lg transition-all duration-300"
                             style={{ width: `${clickWidth}%` }}
                           />
                           <div className="absolute inset-0 flex items-center justify-between px-3">
-                            <span className="text-xs font-medium text-white mix-blend-plus-lighter">
-                              {day.clicks} clicks
+                            <span className="text-xs font-semibold text-white drop-shadow">
+                              {day.clicks}
                             </span>
                             {day.conversions > 0 && (
-                              <span className="text-xs font-medium text-green-300">
-                                {day.conversions} paid
+                              <span className="text-xs font-medium text-emerald-300 drop-shadow">
+                                ✓ {day.conversions}
                               </span>
                             )}
                           </div>
@@ -414,37 +492,98 @@ export default function PaymentAnalyticsPage() {
                   })}
                 </div>
               ) : (
-                <p className="text-slate-500 dark:text-slate-400 text-center py-8">
-                  No daily trend data available for this period
-                </p>
+                <div className="text-center py-12">
+                  <Activity className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
+                  <p className="text-slate-500 dark:text-slate-400">No daily trend data</p>
+                </div>
               )}
             </Card>
           </div>
 
           {/* Additional Stats */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Card>
-              <p className="text-sm text-slate-600 dark:text-slate-400">Average Order Value</p>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
-                {formatCurrency(analytics.average_order_value)}
-              </p>
+            <Card className="border-slate-200 dark:border-slate-700">
+              <div className="p-4">
+                <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Average Order</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                  {formatCurrency(analytics.average_order_value)}
+                </p>
+              </div>
             </Card>
-            <Card>
-              <p className="text-sm text-slate-600 dark:text-slate-400">Failed Payments</p>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
-                {analytics.payments_failed}
-              </p>
+            <Card className="border-slate-200 dark:border-slate-700">
+              <div className="p-4">
+                <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Failed Payments</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                  {analytics.payments_failed}
+                </p>
+              </div>
             </Card>
-            <Card>
-              <p className="text-sm text-slate-600 dark:text-slate-400">Success Rate</p>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
-                {analytics.payments_completed + analytics.payments_failed > 0
-                  ? `${((analytics.payments_completed / (analytics.payments_completed + analytics.payments_failed)) * 100).toFixed(1)}%`
-                  : 'N/A'}
-              </p>
+            <Card className="border-slate-200 dark:border-slate-700">
+              <div className="p-4">
+                <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Success Rate</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                  {analytics.payments_completed + analytics.payments_failed > 0
+                    ? `${((analytics.payments_completed / (analytics.payments_completed + analytics.payments_failed)) * 100).toFixed(1)}%`
+                    : 'N/A'}
+                </p>
+              </div>
             </Card>
           </div>
         </>
+      )}
+
+      {/* All Users Modal */}
+      {showAllUsersModal && analytics?.completed_payment_user_ids && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setShowAllUsersModal(false)}
+        >
+          <div
+            className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 border-b border-slate-200 dark:border-slate-700">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl">
+                    <Users className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                      Users Who Paid
+                    </h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      {analytics.completed_payment_user_ids.length} paying customers
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowAllUsersModal(false)}
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                >
+                  <XCircle className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {analytics.completed_payment_user_ids.map((userId, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-100 dark:border-slate-800"
+                  >
+                    <span className="flex items-center justify-center w-8 h-8 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg text-sm font-bold">
+                      {index + 1}
+                    </span>
+                    <span className="font-medium text-slate-900 dark:text-white">
+                      {userId}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
