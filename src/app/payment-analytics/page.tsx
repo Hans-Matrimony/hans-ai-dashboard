@@ -96,14 +96,6 @@ export default function PaymentAnalyticsPage() {
     return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
   };
 
-  // Gradient backgrounds for cards
-  const gradients = {
-    blue: 'from-blue-500 via-blue-600 to-blue-700',
-    green: 'from-emerald-500 via-emerald-600 to-teal-700',
-    purple: 'from-violet-500 via-purple-600 to-indigo-700',
-    amber: 'from-amber-500 via-orange-500 to-red-500',
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -185,11 +177,11 @@ export default function PaymentAnalyticsPage() {
             <span className="font-medium">{formatDateRange()}</span>
           </div>
 
-          {/* Key Metrics Cards - Modern Gradient Design */}
+          {/* Key Metrics Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             {/* Button Clicks */}
-            <Card className="relative overflow-hidden border-0 shadow-lg shadow-blue-500/10">
-              <div className={`absolute inset-0 bg-gradient-to-br ${gradients.blue} opacity-5`}></div>
+            <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg shadow-blue-500/10">
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 opacity-5"></div>
               <div className="relative p-5">
                 <div className="flex items-start justify-between mb-3">
                   <div className="p-2.5 bg-blue-100 dark:bg-blue-900/30 rounded-xl">
@@ -204,11 +196,11 @@ export default function PaymentAnalyticsPage() {
                   {analytics.button_clicks.toLocaleString()}
                 </p>
               </div>
-            </Card>
+            </div>
 
-            {/* Payments Completed - Enhanced with Users */}
-            <Card className="relative overflow-hidden border-0 shadow-lg shadow-emerald-500/10">
-              <div className={`absolute inset-0 bg-gradient-to-br ${gradients.green} opacity-5`}></div>
+            {/* Payments Completed */}
+            <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg shadow-emerald-500/10">
+              <div className="absolute inset-0 bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 opacity-5"></div>
               <div className="relative p-5">
                 <div className="flex items-start justify-between mb-3">
                   <div className="p-2.5 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl">
@@ -238,7 +230,7 @@ export default function PaymentAnalyticsPage() {
                   )}
                 </div>
 
-                {/* Compact Users Display */}
+                {/* Users Display */}
                 {analytics.completed_payment_user_ids && analytics.completed_payment_user_ids.length > 0 && (
                   <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700">
                     <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-emerald-200 dark:scrollbar-thumb-emerald-800 scrollbar-track-transparent">
@@ -259,11 +251,11 @@ export default function PaymentAnalyticsPage() {
                   </div>
                 )}
               </div>
-            </Card>
+            </div>
 
             {/* Conversion Rate */}
-            <Card className="relative overflow-hidden border-0 shadow-lg shadow-violet-500/10">
-              <div className={`absolute inset-0 bg-gradient-to-br ${gradients.purple} opacity-5`}></div>
+            <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg shadow-violet-500/10">
+              <div className="absolute inset-0 bg-gradient-to-br from-violet-500 via-purple-600 to-indigo-700 opacity-5"></div>
               <div className="relative p-5">
                 <div className="flex items-start justify-between mb-3">
                   <div className="p-2.5 bg-violet-100 dark:bg-violet-900/30 rounded-xl">
@@ -284,11 +276,11 @@ export default function PaymentAnalyticsPage() {
                   <span className="text-lg text-slate-400">%</span>
                 </div>
               </div>
-            </Card>
+            </div>
 
             {/* Revenue */}
-            <Card className="relative overflow-hidden border-0 shadow-lg shadow-amber-500/10">
-              <div className={`absolute inset-0 bg-gradient-to-br ${gradients.amber} opacity-5`}</div>
+            <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg shadow-amber-500/10">
+              <div className="absolute inset-0 bg-gradient-to-br from-amber-500 via-orange-500 to-red-500 opacity-5"></div>
               <div className="relative p-5">
                 <div className="flex items-start justify-between mb-3">
                   <div className="p-2.5 bg-amber-100 dark:bg-amber-900/30 rounded-xl">
@@ -303,10 +295,10 @@ export default function PaymentAnalyticsPage() {
                   {formatCurrency(analytics.total_revenue)}
                 </p>
               </div>
-            </Card>
+            </div>
           </div>
 
-          {/* Conversion Funnel - Modern Design */}
+          {/* Conversion Funnel */}
           <Card className="mb-8 border-slate-200 dark:border-slate-700">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
@@ -349,8 +341,8 @@ export default function PaymentAnalyticsPage() {
                   <div key={index}>
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-3">
-                        <div className={`p-2 bg-${step.color}-100 dark:bg-${step.color}-900/30 rounded-lg`}>
-                          <Icon className={`w-4 h-4 text-${step.color}-600 dark:text-${step.color}-400`} />
+                        <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                          <Icon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                         </div>
                         <span className="font-medium text-slate-700 dark:text-slate-300">
                           {step.label}
