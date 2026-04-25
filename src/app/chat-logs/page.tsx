@@ -466,26 +466,19 @@ useEffect(() => {
     }
     // check if user was active within the selected date range
 function isUserActiveInDateRange(u: UserDoc): boolean {
-    const lastMsg = latestActivity(u);
-    if (!lastMsg) return false;
-    const lastMsgDate = new Date(lastMsg);
+    const start = startDate ? new Date(startDate) : null;
+    const end = endDate ? new Date(endDate) : null;
+    if (end) end.setHours(23, 59, 59, 999);
 
-    if (startDate && endDate) {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        return lastMsgDate >= start && lastMsgDate <= end;
-    }
-    if (startDate) {
-        return lastMsgDate >= new Date(startDate);
-    }
-    if (endDate) {
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        return lastMsgDate <= end;
-    }
-    return isUserActive(u);
+    return u.sessions.some(session => {
+        const sessionStart = new Date(session.startTime);
+        const sessionEnd = new Date(session.lastMessageTime);
+        if (start && sessionEnd < start) return false;
+        if (end && sessionStart > end) return false;
+        return true;
+    });
 }
+
 
     // check if user is active within a specific time period
     function isUserActiveInPeriod(u: UserDoc, period: string): boolean {
