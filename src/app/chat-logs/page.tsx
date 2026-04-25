@@ -1,4 +1,4 @@
-'use client';
+    'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback, Suspense } from 'react';
 import Link from 'next/link';
@@ -185,6 +185,10 @@ function ChatLogsContent() {
     const [isResizing, setIsResizing] = useState(false);
     const topSectionRef = useRef<HTMLDivElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const messagesContainerRef = useRef<HTMLDivElement>(null);
+    const isUserScrollingRef = useRef(false);
+    const [showScrollBtn, setShowScrollBtn] = useState(false);
+    const [newMsgCount, setNewMsgCount] = useState(0);
 
     const startResizing = useCallback((e: React.MouseEvent) => {
         setIsResizing(true);
@@ -339,11 +343,41 @@ function ChatLogsContent() {
     }, [isFullscreen, toggleFullscreen]);
 
     // Auto-scroll to bottom (latest messages) when session or messages change
-    useEffect(() => {
-        if (selectedSession && messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-        }
-    }, [selectedSession, selectedSession?.messages.length]);
+   // Scroll handler — detects if user has scrolled up
+const handleScroll = useCallback(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const scrolledUp = distFromBottom > 80;
+    isUserScrollingRef.current = scrolledUp;
+    setShowScrollBtn(scrolledUp);
+    if (!scrolledUp) setNewMsgCount(0);
+}, []);
+
+// Auto-scroll to bottom (latest messages) when session or messages change
+useEffect(() => {
+    if (!selectedSession) return;
+    if (isUserScrollingRef.current) {
+        // User upar hai — sirf badge count badhao
+        setNewMsgCount(prev => prev + 1);
+    } else {
+        // User neeche hai — auto scroll karo
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        setNewMsgCount(0);
+    }
+}, [selectedSession?.messages.length]);
+
+// Jab naya session select ho tab hamesha bottom pe le jao
+useEffect(() => {
+    if (selectedSession) {
+        isUserScrollingRef.current = false;
+        setShowScrollBtn(false);
+        setNewMsgCount(0);
+        setTimeout(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 50);
+    }
+}, [selectedSession?.sessionId]);
 
     // compute unique channels
     const channels = useMemo(() => {
@@ -1100,7 +1134,12 @@ function ChatLogsContent() {
                             </div>
 
                             {/* Messages */}
-                            <div className={`flex-1 overflow-y-auto p-4 md:p-6 space-y-4 ${isFullscreen ? 'bg-slate-900' : 'bg-gradient-to-b from-slate-50/50 to-white'}`}>
+                            <div
+                                ref={messagesContainerRef}
+                                onScroll={handleScroll}
+                                className={`flex-1 overflow-y-auto p-4 md:p-6 space-y-4 relative ${isFullscreen ? 'bg-slate-900' : 'bg-gradient-to-b from-slate-50/50 to-white'}`}
+                                >
+
                                 {selectedSession?.messages.map((msg) => (
                                     <div
                                         key={msg.messageId}
@@ -1174,7 +1213,27 @@ function ChatLogsContent() {
                                 )}
 
                                 {/* Invisible div for auto-scrolling to bottom */}
+                                
                                 <div ref={messagesEndRef} />
+                                {showScrollBtn && (
+                                <button
+                                onClick={() => {
+                                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                                setNewMsgCount(0);
+                                }}
+                                className="sticky bottom-4 float-right mr-2 z-10 w-10 h-10 rounded-full bg-white border border-slate-200 shadow-lg flex items-center justify-center hover:scale-110 hover:border-indigo-300 hover:text-indigo-600 transition-all text-slate-500"
+                                title="Jump to latest message"
+                                >
+                                {newMsgCount > 0 && (
+                                <span className="absolute -top-2 -right-2 bg-indigo-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                                {newMsgCount > 9 ? '9+' : newMsgCount}
+                                </span>
+                                )}
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                                </button>
+                                )}
                             </div>
                         </div>
                     ) : (
