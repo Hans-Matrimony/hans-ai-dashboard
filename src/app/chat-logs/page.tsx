@@ -464,6 +464,28 @@ useEffect(() => {
         const diff = Date.now() - new Date(lastMsg).getTime();
         return diff < 5 * 60 * 1000; // 5 minutes
     }
+    // check if user was active within the selected date range
+function isUserActiveInDateRange(u: UserDoc): boolean {
+    const lastMsg = latestActivity(u);
+    if (!lastMsg) return false;
+    const lastMsgDate = new Date(lastMsg);
+
+    if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        return lastMsgDate >= start && lastMsgDate <= end;
+    }
+    if (startDate) {
+        return lastMsgDate >= new Date(startDate);
+    }
+    if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        return lastMsgDate <= end;
+    }
+    return isUserActive(u);
+}
 
     // check if user is active within a specific time period
     function isUserActiveInPeriod(u: UserDoc, period: string): boolean {
@@ -502,8 +524,10 @@ useEffect(() => {
         const totalMsgs = allMessages.length;
 
         // Active users (within last 5 minutes)
-        const activeUsersCount = users.filter(u => isUserActive(u)).length;
-
+       const activeUsersCount = (startDate || endDate)
+    ? users.filter(u => isUserActiveInDateRange(u)).length
+    : users.filter(u => isUserActive(u)).length;
+        
         // Average session duration
         let totalDurationMs = 0;
         let validDurationCount = 0;
