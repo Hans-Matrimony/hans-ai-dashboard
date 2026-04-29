@@ -448,11 +448,20 @@ useEffect(() => {
         return validSessions > 0 ? totalDuration / validSessions : 0;
     }
 
-    // latest message time for user
-    function latestActivity(u: UserDoc) {
+    // latest message time for user (excludes automated messages like proactive_nudge, daily_horoscope)
+    function latestActivity(u: UserDoc): string {
         let latest = '';
         u.sessions.forEach(s => {
-            if (s.lastMessageTime > latest) latest = s.lastMessageTime;
+            s.messages.forEach(m => {
+                // Skip automated system messages for activity calculation
+                if (m.messageType === 'proactive_nudge' ||
+                    m.messageType === 'daily_horoscope' ||
+                    m.messageType === 'proactive_nudge_failed' ||
+                    m.messageType === 'daily_horoscope_failed') {
+                    return;
+                }
+                if (m.timestamp > latest) latest = m.timestamp;
+            });
         });
         return latest;
     }
