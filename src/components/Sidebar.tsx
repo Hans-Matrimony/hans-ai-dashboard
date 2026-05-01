@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { Users, CheckCircle, Clock, TrendingUp } from 'lucide-react';
 
 const navItems = [
     {
@@ -62,6 +63,15 @@ const navItems = [
         ),
     },
     {
+        label: 'Subscriptions',
+        href: '/subscriptions',
+        icon: (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+        ),
+    },
+    {
         label: 'Payment Analytics',
         href: '/payment-analytics',
         icon: (
@@ -86,10 +96,46 @@ interface SidebarProps {
     onClose: () => void;
 }
 
+interface SubStats {
+    active: number;
+    expiringSoon: number;
+    total: number;
+}
+
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const isFullscreen = searchParams.get('fullscreen') === 'true';
+    const [subStats, setSubStats] = useState<SubStats>({ active: 0, expiringSoon: 0, total: 0 });
+    const [statsLoading, setStatsLoading] = useState(true);
+
+    // Fetch subscription stats
+    useEffect(() => {
+        const fetchStats = async () => {
+            try {
+                const response = await fetch('/api/subscriptions?limit=1000');
+                if (response.ok) {
+                    const data = await response.json();
+                    const active = data.subscriptions?.filter((s: any) => s.status === 'active') || [];
+                    const expiringSoon = active.filter((s: any) => s.daysRemaining !== undefined && s.daysRemaining <= 3);
+                    setSubStats({
+                        active: active.length,
+                        expiringSoon: expiringSoon.length,
+                        total: data.total || 0
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to fetch subscription stats:', error);
+            } finally {
+                setStatsLoading(false);
+            }
+        };
+
+        fetchStats();
+        // Refresh stats every 5 minutes
+        const interval = setInterval(fetchStats, 5 * 60 * 1000);
+        return () => clearInterval(interval);
+    }, []);
 
     // Close drawer on route change on mobile
     useEffect(() => {
@@ -173,6 +219,60 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                         );
                     })}
                 </nav>
+
+                {/* Subscription Stats Card */}
+                <div className="px-4 pb-4">
+                    <Link
+                        href="/subscriptions"
+                        onClick={onClose}
+                        className="block bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 rounded-xl p-4 border border-emerald-200 dark:border-emerald-800 hover:shadow-md hover:border-emerald-300 dark:hover:border-emerald-700 transition-all group"
+                    >
+                        <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                                <div className="p-1.5 bg-emerald-500 rounded-lg">
+                                    <Users className="w-4 h-4 text-white" />
+                                </div>
+                                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Subscriptions</span>
+                            </div>
+                            <TrendingUp className="w-4 h-4 text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
+
+                        {statsLoading ? (
+                            <div className="animate-pulse">
+                                <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded mb-2"></div>
+                                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-2/3"></div>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="flex items-end gap-3 mb-3">
+                                    <div>
+                                        <p className="text-2xl font-bold text-slate-900 dark:text-white">{subStats.active}</p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">Active</p>
+                                    </div>
+                                    <div className="text-slate-300 dark:text-slate-600 text-xl">/</div>
+                                    <div>
+                                        <p className="text-xl font-semibold text-slate-600 dark:text-slate-400">{subStats.total}</p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">Total</p>
+                                    </div>
+                                </div>
+
+                                {subStats.expiringSoon > 0 && (
+                                    <div className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-2 py-1.5 rounded-lg">
+                                        <Clock className="w-3 h-3" />
+                                        {subStats.expiringSoon} expiring soon
+                                    </div>
+                                )}
+
+                                {subStats.expiringSoon === 0 && subStats.active > 0 && (
+                                    <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/30 px-2 py-1.5 rounded-lg">
+                                        <CheckCircle className="w-3 h-3" />
+                                        All active
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </Link>
+                </div>
 
                 {/* Status */}
                 <div className="p-4 border-t border-slate-100">

@@ -26,7 +26,8 @@ import {
   Filter,
   Sparkles,
   Star,
-  Clock
+  Clock,
+  Shield
 } from 'lucide-react';
 import { PaymentFunnelData, PlanPerformance } from '@/lib/payment-analytics-types';
 
@@ -53,9 +54,38 @@ export default function PaymentAnalyticsPage() {
   const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d'>('7d');
   const [showAllUsersModal, setShowAllUsersModal] = useState(false);
 
+  // Subscription stats
+  const [subStats, setSubStats] = useState<{ active: number; expiringSoon: number; total: number } | null>(null);
+
   useEffect(() => {
     fetchAnalytics();
   }, [dateRange]);
+
+  // Fetch subscription stats
+  useEffect(() => {
+    const fetchSubStats = async () => {
+      try {
+        const response = await fetch('/api/subscriptions?limit=1000');
+        if (response.ok) {
+          const data = await response.json();
+          const active = data.subscriptions?.filter((s: any) => s.status === 'active') || [];
+          const expiringSoon = active.filter((s: any) => s.daysRemaining !== undefined && s.daysRemaining <= 3);
+          setSubStats({
+            active: active.length,
+            expiringSoon: expiringSoon.length,
+            total: data.total || 0
+          });
+        }
+      } catch (error) {
+        console.error('Failed to fetch subscription stats:', error);
+      }
+    };
+
+    fetchSubStats();
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchSubStats, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const fetchAnalytics = async (showLoading = true) => {
     try {
@@ -310,6 +340,91 @@ export default function PaymentAnalyticsPage() {
               </div>
             </div>
           </div>
+
+          {/* Subscription Stats Card */}
+          {subStats && (
+            <div className="mb-8 group relative overflow-hidden bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 dark:from-emerald-900/20 dark:via-teal-900/20 dark:to-cyan-900/20 rounded-2xl border border-emerald-200 dark:border-emerald-800 shadow-sm hover:shadow-md hover:shadow-emerald-500/10 transition-all duration-300">
+              <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-emerald-400/10 to-cyan-400/10 rounded-full blur-3xl group-hover:from-emerald-400/20 group-hover:to-cyan-400/20 transition-all duration-300"></div>
+              <div className="relative p-6">
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl shadow-lg shadow-emerald-500/25">
+                      <Shield className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900 dark:text-white">Subscription Overview</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Active subscriptions & expiry status</p>
+                    </div>
+                  </div>
+                  <a
+                    href="/subscriptions"
+                    className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/30 px-3 py-2 rounded-lg border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-200 dark:hover:bg-emerald-900/50 transition-all"
+                  >
+                    View All
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  {/* Active Subscriptions */}
+                  <div className="bg-white dark:bg-slate-800/80 rounded-xl p-4 border border-emerald-200 dark:border-emerald-800">
+                    <div className="flex items-center gap-2 mb-2">
+                      <CheckCircle className="w-4 h-4 text-emerald-500" />
+                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Active</span>
+                    </div>
+                    <p className="text-3xl font-bold text-slate-900 dark:text-white">{subStats.active}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">of {subStats.total} total</p>
+                  </div>
+
+                  {/* Expiring Soon */}
+                  <div className="bg-white dark:bg-slate-800/80 rounded-xl p-4 border border-amber-200 dark:border-amber-800">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Clock className="w-4 h-4 text-amber-500" />
+                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Expiring Soon</span>
+                    </div>
+                    <p className={`text-3xl font-bold ${subStats.expiringSoon > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-white'}`}>
+                      {subStats.expiringSoon}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">within 3 days</p>
+                  </div>
+
+                  {/* Status Indicator */}
+                  <div className={`rounded-xl p-4 border ${
+                    subStats.expiringSoon > 0
+                      ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
+                      : subStats.active > 0
+                        ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
+                        : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                  }`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Activity className={`w-4 h-4 ${
+                        subStats.expiringSoon > 0
+                          ? 'text-amber-500'
+                          : subStats.active > 0
+                            ? 'text-emerald-500'
+                            : 'text-slate-400'
+                      }`} />
+                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Status</span>
+                    </div>
+                    <p className={`text-sm font-bold ${
+                      subStats.expiringSoon > 0
+                        ? 'text-amber-700 dark:text-amber-300'
+                        : subStats.active > 0
+                          ? 'text-emerald-700 dark:text-emerald-300'
+                          : 'text-slate-600 dark:text-slate-400'
+                    }`}>
+                      {subStats.expiringSoon > 0
+                        ? `${subStats.expiringSoon} need attention`
+                        : subStats.active > 0
+                          ? 'All healthy'
+                          : 'No subscriptions'
+                      }
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Conversion Funnel */}
           <Card className="mb-8 border-slate-200 dark:border-slate-700">
