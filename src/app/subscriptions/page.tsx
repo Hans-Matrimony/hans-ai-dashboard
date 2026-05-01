@@ -22,7 +22,11 @@ import {
   Crown,
   Sparkles,
   Filter,
-  Calendar
+  Calendar,
+  Star,
+  Heart,
+  TrendingUp,
+  Shield
 } from 'lucide-react';
 
 interface Subscription {
@@ -204,7 +208,10 @@ export default function SubscriptionsPage() {
     total: data?.total || 0,
     active: data?.subscriptions.filter(s => s.status === 'active').length || 0,
     expired: data?.subscriptions.filter(s => s.status === 'expired').length || 0,
-    cancelled: data?.subscriptions.filter(s => s.status === 'cancelled').length || 0
+    cancelled: data?.subscriptions.filter(s => s.status === 'cancelled').length || 0,
+    revenue: data?.subscriptions
+      .filter(s => s.status === 'active')
+      .reduce((sum, s) => sum + (s.plan.price || 0), 0) || 0
   };
 
   if (loading) {
@@ -232,7 +239,7 @@ export default function SubscriptionsPage() {
 
       <div className="relative z-10 container mx-auto px-4 py-6 max-w-6xl">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-5">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <div className="flex items-center gap-3">
             <div className="relative">
               <div className="absolute inset-0 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl blur-lg opacity-40"></div>
@@ -241,57 +248,116 @@ export default function SubscriptionsPage() {
               </div>
             </div>
             <div>
-              <h1 className="text-xl font-bold bg-gradient-to-r from-slate-900 to-violet-700 dark:from-white dark:to-violet-300 bg-clip-text text-transparent">
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-slate-900 to-violet-700 dark:from-white dark:to-violet-300 bg-clip-text text-transparent">
                 Subscriptions
               </h1>
-              <p className="text-slate-500 dark:text-slate-400 text-xs flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-violet-500" />
+              <p className="text-slate-500 dark:text-slate-400 text-sm flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5 text-violet-500" />
                 Manage subscriptions & track expiry
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Stats Pills */}
-            <div className="hidden sm:flex items-center gap-2">
-              <div className="px-3 py-1.5 bg-white/70 dark:bg-slate-800/70 backdrop-blur rounded-lg border border-slate-200/50 dark:border-slate-700/50">
-                <span className="text-xs text-slate-500 dark:text-slate-400">Total: </span>
-                <span className="text-sm font-bold text-slate-900 dark:text-white">{stats.total}</span>
-              </div>
-              <div className="px-3 py-1.5 bg-emerald-50/80 dark:bg-emerald-950/50 backdrop-blur rounded-lg border border-emerald-200/50 dark:border-emerald-800/50">
-                <span className="text-xs text-emerald-600 dark:text-emerald-400">Active: </span>
-                <span className="text-sm font-bold text-emerald-700 dark:text-emerald-300">{stats.active}</span>
-              </div>
-              <div className="px-3 py-1.5 bg-red-50/80 dark:bg-red-950/50 backdrop-blur rounded-lg border border-red-200/50 dark:border-red-800/50">
-                <span className="text-xs text-red-600 dark:text-red-400">Expired: </span>
-                <span className="text-sm font-bold text-red-700 dark:text-red-300">{stats.expired}</span>
-              </div>
-            </div>
-
-            <Button
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="gap-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white shadow-lg shadow-violet-500/25 border-0 px-4 py-2 rounded-xl font-semibold text-sm"
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-          </div>
+          <Button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="gap-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white shadow-lg shadow-violet-500/25 border-0 px-4 py-2.5 rounded-xl font-semibold text-sm"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
         </div>
 
-        {/* Mobile Stats */}
-        <div className="sm:hidden flex items-center gap-2 mb-4">
-          <div className="px-3 py-1.5 bg-white/70 dark:bg-slate-800/70 backdrop-blur rounded-lg border border-slate-200/50 dark:border-slate-700/50">
-            <span className="text-xs text-slate-500 dark:text-slate-400">Total: </span>
-            <span className="text-sm font-bold text-slate-900 dark:text-white">{stats.total}</span>
+        {/* Beautiful Stats Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+          {/* Total */}
+          <div className="group relative overflow-hidden bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/30 rounded-2xl p-5 border border-violet-200/50 dark:border-violet-800/50 shadow-lg hover:shadow-xl transition-all duration-300">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-violet-400/20 to-purple-400/20 rounded-full blur-2xl"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl shadow-lg shadow-violet-500/30">
+                  <Users className="w-5 h-5 text-white" />
+                </div>
+                <span className="inline-flex items-center gap-1 px-2 py-1 bg-violet-100 dark:bg-violet-900/30 rounded-lg">
+                  <TrendingUp className="w-3 h-3 text-violet-600 dark:text-violet-400" />
+                  <span className="text-xs font-bold text-violet-700 dark:text-violet-300">ALL</span>
+                </span>
+              </div>
+              <p className="text-3xl font-black text-slate-900 dark:text-white">{stats.total}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-1">Total Subscriptions</p>
+            </div>
           </div>
-          <div className="px-3 py-1.5 bg-emerald-50/80 dark:bg-emerald-950/50 backdrop-blur rounded-lg border border-emerald-200/50 dark:border-emerald-800/50">
-            <span className="text-xs text-emerald-600 dark:text-emerald-400">Active: </span>
-            <span className="text-sm font-bold text-emerald-700 dark:text-emerald-300">{stats.active}</span>
+
+          {/* Active */}
+          <div className="group relative overflow-hidden bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 rounded-2xl p-5 border border-emerald-200/50 dark:border-emerald-800/50 shadow-lg hover:shadow-xl transition-all duration-300">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-emerald-400/20 to-teal-400/20 rounded-full blur-2xl"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl shadow-lg shadow-emerald-500/30">
+                  <CheckCircle className="w-5 h-5 text-white" />
+                </div>
+                <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg">
+                  <Heart className="w-3 h-3 text-emerald-600 dark:text-emerald-400 fill-current" />
+                  <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300">LIVE</span>
+                </span>
+              </div>
+              <p className="text-3xl font-black text-emerald-700 dark:text-emerald-300">{stats.active}</p>
+              <p className="text-xs text-emerald-600/70 dark:text-emerald-400/70 font-semibold mt-1">Active Now</p>
+            </div>
           </div>
-          <div className="px-3 py-1.5 bg-red-50/80 dark:bg-red-950/50 backdrop-blur rounded-lg border border-red-200/50 dark:border-red-800/50">
-            <span className="text-xs text-red-600 dark:text-red-400">Expired: </span>
-            <span className="text-sm font-bold text-red-700 dark:text-red-300">{stats.expired}</span>
+
+          {/* Expired */}
+          <div className="group relative overflow-hidden bg-gradient-to-br from-red-50 to-rose-50 dark:from-red-950/30 dark:to-rose-950/30 rounded-2xl p-5 border border-red-200/50 dark:border-red-800/50 shadow-lg hover:shadow-xl transition-all duration-300">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-red-400/20 to-rose-400/20 rounded-full blur-2xl"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-gradient-to-br from-red-500 to-rose-600 rounded-xl shadow-lg shadow-red-500/30">
+                  <XCircle className="w-5 h-5 text-white" />
+                </div>
+                <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 dark:bg-red-900/30 rounded-lg">
+                  <Clock className="w-3 h-3 text-red-600 dark:text-red-400" />
+                  <span className="text-xs font-bold text-red-700 dark:text-red-300">OFF</span>
+                </span>
+              </div>
+              <p className="text-3xl font-black text-red-700 dark:text-red-300">{stats.expired}</p>
+              <p className="text-xs text-red-600/70 dark:text-red-400/70 font-semibold mt-1">Expired</p>
+            </div>
+          </div>
+
+          {/* Cancelled */}
+          <div className="group relative overflow-hidden bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800/50 dark:to-slate-900/50 rounded-2xl p-5 border border-slate-300 dark:border-slate-700 shadow-lg hover:shadow-xl transition-all duration-300">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-slate-400/20 to-gray-400/20 rounded-full blur-2xl"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-gradient-to-br from-slate-500 to-slate-600 rounded-xl shadow-lg shadow-slate-500/30">
+                  <XCircle className="w-5 h-5 text-white" />
+                </div>
+                <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-200 dark:bg-slate-700 rounded-lg">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">END</span>
+                </span>
+              </div>
+              <p className="text-3xl font-black text-slate-700 dark:text-slate-300">{stats.cancelled}</p>
+              <p className="text-xs text-slate-600/70 dark:text-slate-400/70 font-semibold mt-1">Cancelled</p>
+            </div>
+          </div>
+
+          {/* Revenue */}
+          <div className="group relative overflow-hidden bg-gradient-to-br from-amber-50 via-yellow-50 to-amber-50 dark:from-amber-950/30 dark:via-yellow-950/30 dark:to-amber-950/30 rounded-2xl p-5 border border-amber-200/50 dark:border-amber-800/50 shadow-lg hover:shadow-xl transition-all duration-300">
+            <div className="absolute inset-0 bg-gradient-to-br from-amber-400/10 to-yellow-400/10"></div>
+            <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-amber-400/20 to-yellow-400/20 rounded-full blur-2xl"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-gradient-to-br from-amber-500 to-yellow-500 rounded-xl shadow-lg shadow-amber-500/30">
+                  <IndianRupee className="w-5 h-5 text-white" />
+                </div>
+                <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-100 dark:bg-amber-900/30 rounded-lg">
+                  <Star className="w-3 h-3 text-amber-600 dark:text-amber-400 fill-current" />
+                  <span className="text-xs font-bold text-amber-700 dark:text-amber-300">MRR</span>
+                </span>
+              </div>
+              <p className="text-3xl font-black text-amber-700 dark:text-amber-300">{formatPrice(stats.revenue)}</p>
+              <p className="text-xs text-amber-600/70 dark:text-amber-400/70 font-semibold mt-1">Monthly Revenue</p>
+            </div>
           </div>
         </div>
 
