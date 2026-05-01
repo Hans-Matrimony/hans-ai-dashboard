@@ -473,19 +473,23 @@ useEffect(() => {
         const diff = Date.now() - new Date(lastMsg).getTime();
         return diff < 5 * 60 * 1000; // 5 minutes
     }
-    // check if user was active within the selected date range
+    // check if user was active within the selected date range (excludes system messages)
 function isUserActiveInDateRange(u: UserDoc): boolean {
     const start = startDate ? new Date(startDate) : null;
     const end = endDate ? new Date(endDate) : null;
     if (end) end.setHours(23, 59, 59, 999);
 
-    return u.sessions.some(session => {
-        const sessionStart = new Date(session.startTime);
-        const sessionEnd = new Date(session.lastMessageTime);
-        if (start && sessionEnd < start) return false;
-        if (end && sessionStart > end) return false;
-        return true;
-    });
+    // Use latestActivity() which excludes system messages (proactive_nudge, daily_horoscope)
+    const lastRealActivity = latestActivity(u);
+    if (!lastRealActivity) return false;
+
+    const activityTime = new Date(lastRealActivity);
+
+    // Check if the last real activity falls within the date range
+    if (start && activityTime < start) return false;
+    if (end && activityTime > end) return false;
+
+    return true;
 }
 
 
@@ -1153,7 +1157,7 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                                             {channelIcon(selectedSession.channel)} {selectedSession.channel}
                                         </span>
                                         <span>Started: {fmtTime(selectedSession.startTime)}</span>
-                                        <span>Last: {fmtTime(selectedSession.lastMessageTime)}</span>
+                                        <span>Last: {fmtTime(latestActivity(selectedUser) || selectedSession.lastMessageTime)}</span>
                                         <span>{selectedSession.messages.length} messages</span>
                                     </div>
                                 )}
