@@ -1,6 +1,8 @@
 /**
  * AI Analytics Service
- * Interfaces with Groq API for fast, accurate conversation analysis
+ * Interfaces with DeepSeek, Groq APIs for fast, accurate conversation analysis
+ * Primary: DeepSeek V4 Flash (best for reasoning, very cheap)
+ * Fallback: Groq Llama 3.1 (free tier with rate limits)
  */
 
 import axios, { AxiosError } from 'axios';
@@ -10,35 +12,277 @@ import {
   IssueDetection,
   TopicDistribution,
   ResponseLengthAnalysis,
-  SatisfactionSignals
+  SatisfactionSignals,
+  FriendshipPositioning
 } from './analytics-types';
 
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
-const GROQ_URL = 'https://api.groq.com/openai/v1';
+const HF_API_KEY = process.env.HF_API_KEY || '';
 const API_TIMEOUT = 120000; // 2 minutes
 
-/**
- * Call Groq API for analysis
- */
-async function callGroqAPI(prompt: string, systemPrompt: string = 'You are an expert AI analyst.') {
-  try {
-    console.log('[Groq API] Calling API with prompt length:', prompt.length);
+// Choose API: DeepSeek (primary, cheap, fast) -> Groq (fallback, free)
+const USE_DEEPSEEK = DEEPSEEK_API_KEY && DEEPSEEK_API_KEY !== 'your_deepseek_api_key_here';
+const USE_HF = false; // Hugging Face disabled - models not available on free inference API
 
+// Simple in-memory cache for friendship scores (avoid re-analyzing same conversations)
+const friendshipCache = new Map<string, { score: FriendshipPositioning; timestamp: number }>();
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+/**
+ * Call AI API (DeepSeek -> Groq fallback) for analysis
+ */
+async function callAIAPI(prompt: string, systemPrompt: string = 'You are an expert AI analyst.') {
+  console.log('\n' + '─'.repeat(40));
+  console.log('🔌 [AI API] Initializing API call');
+  console.log('   ├─ USE_DEEPSEEK:', USE_DEEPSEEK);
+  console.log('   ├─ DEEPSEEK_API_KEY:', DEEPSEEK_API_KEY ? '✅ SET' : '❌ NOT SET');
+  console.log('   ├─ GROQ_API_KEY:', GROQ_API_KEY ? '✅ SET' : '❌ NOT SET');
+  console.log('   └─ Prompt length:', prompt.length, 'characters');
+  console.log('─'.repeat(40));
+
+  // PRIMARY: DeepSeek V4 Flash (fast, cheap, great reasoning)
+  if (USE_DEEPSEEK) {
+    const deepseekStartTime = Date.now();
+    try {
+      console.log('\n🔵 [DEEPSEEK V4 FLASH] Sending request...');
+      console.log('   ├─ Model: deepseek-chat (V4 Flash)');
+      console.log('   ├─ Max tokens: 2048');
+      console.log('   └─ Temperature: 0.3');
+
+      const response = await axios.post(
+        'https://api.deepseek.com/v1/chat/completions',
+        {
+          model: 'deepseek-chat',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.3,
+          max_tokens: 2048,
+          response_format: { type: 'json_object' }
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: API_TIMEOUT
+        }
+      );
+
+      const content = response.data.choices[0].message.content;
+      const deepseekDuration = ((Date.now() - deepseekStartTime) / 1000).toFixed(2);
+
+      console.log('\n✅ [DEEPSEEK] SUCCESS!');
+      console.log('   ├─ Response length:', content?.length || 0, 'characters');
+      console.log('   ├─ Duration:', deepseekDuration, 'seconds');
+      console.log('   └─ Preview:', content?.substring(0, 100) || 'No content', '...');
+      console.log('─'.repeat(40) + '\n');
+
+      return content;
+    } catch (deepseekError) {
+      const deepseekDuration = ((Date.now() - deepseekStartTime) / 1000).toFixed(2);
+      console.error('\n❌ [DEEPSEEK] FAILED!');
+      console.error('   ├─ Duration:', deepseekDuration, 'seconds');
+      console.error('   ├─ Error:', deepseekError instanceof Error ? deepseekError.message : String(deepseekError));
+
+      if (axios.isAxiosError(deepseekError)) {
+        console.error('   ├─ Status:', deepseekError.response?.status || 'No response');
+        console.error('   └─ Data:', deepseekError.response?.data ? JSON.stringify(deepseekError.response.data).substring(0, 200) : 'N/A');
+      }
+      console.error('   ⬇️  Falling back to Groq API...');
+      console.log('─'.repeat(40));
+      // Fall through to Groq
+    }
+  }
+
+  // FALLBACK: Groq API (free tier with rate limits)
+  const maxRetries = 3;
+  let retryCount = 0;
+
+  while (retryCount < maxRetries) {
+    const groqStartTime = Date.now();
+    try {
+      if (retryCount > 0) {
+        console.log(`\n🔄 [GROQ API] Retry attempt ${retryCount}/${maxRetries}...`);
+      } else {
+        console.log('\n🟧 [GROQ API] Sending request...');
+      }
+      console.log('   ├─ Model: llama-3.1-8b-instant');
+      console.log('   ├─ Max tokens: 2048');
+      console.log('   ├─ Temperature: 0.3');
+      console.log('   └─ Response format: json_object');
+
+      const response = await axios.post(
+        'https://api.groq.com/openai/v1/chat/completions',
+        {
+          model: 'llama-3.1-8b-instant',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.3,
+          max_tokens: 2048,
+          response_format: { type: 'json_object' }
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${GROQ_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: API_TIMEOUT
+        }
+      );
+
+      const content = response.data.choices[0].message.content;
+      const groqDuration = ((Date.now() - groqStartTime) / 1000).toFixed(2);
+
+      console.log('\n✅ [GROQ API] SUCCESS!');
+      console.log('   ├─ Response length:', content?.length || 0, 'characters');
+      console.log('   ├─ Duration:', groqDuration, 'seconds');
+      console.log('   └─ Preview:', content?.substring(0, 100) || 'No content', '...');
+      console.log('─'.repeat(40) + '\n');
+
+      return content;
+    } catch (groqError: any) {
+      const groqDuration = ((Date.now() - groqStartTime) / 1000).toFixed(2);
+
+      // Check if it's a rate limit error (429)
+      if (axios.isAxiosError(groqError) && groqError.response?.status === 429) {
+        retryCount++;
+
+        if (retryCount < maxRetries) {
+          // Wait longer with each retry (5s, 10s, 20s)
+          const waitTime = 5000 * Math.pow(2, retryCount - 1);
+          console.error(`\n⚠️  [GROQ API] Rate limit hit! Waiting ${waitTime/1000}s before retry...`);
+          console.error(`   ├─ Retry ${retryCount}/${maxRetries}`);
+          console.error(`   └─ Status: 429 (Too Many Requests)`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          continue; // Retry the request
+        }
+      }
+
+      // If not rate limit or max retries reached, fail
+      console.error('\n❌ [GROQ API] FAILED!');
+      console.error('   ├─ Duration:', groqDuration, 'seconds');
+      console.error('   ├─ Error:', groqError instanceof Error ? groqError.message : String(groqError));
+
+      if (axios.isAxiosError(groqError)) {
+        console.error('   ├─ Status:', groqError.response?.status || 'No response');
+        console.error('   └─ Data:', groqError.response?.data ? JSON.stringify(groqError.response.data).substring(0, 200) : 'N/A');
+      }
+      console.error('─'.repeat(40) + '\n');
+      throw groqError;
+    }
+  }
+
+  throw new Error('Max retries reached for Groq API');
+}
+
+/**
+ * Call Groq API directly (for single user friendship analysis)
+ * Always uses Groq Llama 3.1 (free tier with rate limits)
+ */
+async function callGroqDirect(prompt: string, systemPrompt: string = 'You are an expert AI analyst.'): Promise<string> {
+  console.log('\n' + '─'.repeat(40));
+  console.log('🟧 [GROQ DIRECT] Single user analysis');
+  console.log('   ├─ Model: llama-3.1-8b-instant');
+  console.log('   ├─ Max tokens: 2048');
+  console.log('   └─ Temperature: 0.3');
+  console.log('─'.repeat(40));
+
+  const maxRetries = 3;
+  let retryCount = 0;
+
+  while (retryCount < maxRetries) {
+    const groqStartTime = Date.now();
+    try {
+      const response = await axios.post(
+        'https://api.groq.com/openai/v1/chat/completions',
+        {
+          model: 'llama-3.1-8b-instant',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.3,
+          max_tokens: 2048,
+          response_format: { type: 'json_object' }
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${GROQ_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: API_TIMEOUT
+        }
+      );
+
+      const content = response.data.choices[0].message.content;
+      const groqDuration = ((Date.now() - groqStartTime) / 1000).toFixed(2);
+
+      console.log('\n✅ [GROQ DIRECT] SUCCESS!');
+      console.log('   ├─ Response length:', content?.length || 0, 'characters');
+      console.log('   ├─ Duration:', groqDuration, 'seconds');
+      console.log('   └─ Preview:', content?.substring(0, 100) || 'No content', '...');
+      console.log('─'.repeat(40) + '\n');
+
+      return content;
+    } catch (groqError: any) {
+      const groqDuration = ((Date.now() - groqStartTime) / 1000).toFixed(2);
+
+      if (axios.isAxiosError(groqError) && groqError.response?.status === 429) {
+        retryCount++;
+        if (retryCount < maxRetries) {
+          const waitTime = 5000 * Math.pow(2, retryCount - 1);
+          console.error(`\n⚠️  [GROQ DIRECT] Rate limit hit! Waiting ${waitTime/1000}s...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          continue;
+        }
+      }
+
+      console.error('\n❌ [GROQ DIRECT] FAILED!');
+      console.error('   ├─ Error:', groqError instanceof Error ? groqError.message : String(groqError));
+      if (axios.isAxiosError(groqError)) {
+        console.error('   ├─ Status:', groqError.response?.status || 'No response');
+      }
+      console.error('─'.repeat(40) + '\n');
+      throw groqError;
+    }
+  }
+
+  throw new Error('Max retries reached for Groq API');
+}
+
+/**
+ * Call DeepSeek API directly (for batch friendship analysis)
+ * Always uses DeepSeek V4 Flash (fast, cheap, great reasoning)
+ */
+async function callDeepSeekDirect(prompt: string, systemPrompt: string = 'You are an expert AI analyst.'): Promise<string> {
+  console.log('\n' + '─'.repeat(40));
+  console.log('🔵 [DEEPSEEK DIRECT] Batch analysis');
+  console.log('   ├─ Model: deepseek-chat (V4 Flash)');
+  console.log('   ├─ Max tokens: 2048');
+  console.log('   └─ Temperature: 0.3');
+  console.log('─'.repeat(40));
+
+  try {
     const response = await axios.post(
-      `${GROQ_URL}/chat/completions`,
+      'https://api.deepseek.com/v1/chat/completions',
       {
-        model: 'llama-3.3-70b-versatile',
+        model: 'deepseek-chat',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt }
         ],
         temperature: 0.3,
-        max_tokens: 4096,
+        max_tokens: 2048,
         response_format: { type: 'json_object' }
       },
       {
         headers: {
-          'Authorization': `Bearer ${GROQ_API_KEY}`,
+          'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
           'Content-Type': 'application/json'
         },
         timeout: API_TIMEOUT
@@ -46,17 +290,31 @@ async function callGroqAPI(prompt: string, systemPrompt: string = 'You are an ex
     );
 
     const content = response.data.choices[0].message.content;
-    console.log('[Groq API] Response length:', content?.length || 0);
-    console.log('[Groq API] Response preview:', content?.substring(0, 200) || 'No content');
+    const duration = ((Date.now() - Date.now()) / 1000).toFixed(2);
+
+    console.log('\n✅ [DEEPSEEK DIRECT] SUCCESS!');
+    console.log('   ├─ Response length:', content?.length || 0, 'characters');
+    console.log('   └─ Preview:', content?.substring(0, 100) || 'No content', '...');
+    console.log('─'.repeat(40) + '\n');
 
     return content;
   } catch (error) {
-    console.error('[Groq API] Error:', error);
+    console.error('\n❌ [DEEPSEEK DIRECT] FAILED!');
+    console.error('   ├─ Error:', error instanceof Error ? error.message : String(error));
     if (axios.isAxiosError(error)) {
-      console.error('[Groq API] Response:', error.response?.data);
+      console.error('   ├─ Status:', error.response?.status || 'No response');
     }
+    console.error('─'.repeat(40) + '\n');
     throw error;
   }
+}
+
+/**
+ * Call AI API with automatic fallback (DeepSeek -> Groq)
+ * Used for general analytics
+ */
+async function callGroqAPI(prompt: string, systemPrompt: string = 'You are an expert AI analyst.') {
+  return callAIAPI(prompt, systemPrompt);
 }
 
 /**
@@ -699,4 +957,385 @@ ${conversations.map((c, i) => `${i + 1}. ${c.text.substring(0, 300)}...`).join('
     console.error('[Topic Performance] Analysis failed:', error);
     return [];
   }
+}
+
+/**
+ * Analyze friendship positioning for a single user
+ * Measures how well the AI agent builds a friend-like connection
+ * Uses Groq AI with detailed scoring criteria for accurate results
+ *
+ * @param messages - Array of messages with role and text
+ * @returns FriendshipPositioning score with breakdown
+ */
+export async function analyzeFriendshipPositioning(
+  messages: Array<{role: string; text: string}>
+): Promise<FriendshipPositioning> {
+  const startTime = Date.now();
+  console.log('\n' + '═'.repeat(60));
+  console.log('🤝 [FRIENDSHIP POSITIONING] ANALYSIS STARTED');
+  console.log('═'.repeat(60));
+
+  try {
+    // Log total messages available
+    console.log('📊 [INPUT] Total messages available:', messages.length);
+
+    // Take last 20 messages for deeper analysis
+    const recentMessages = messages.slice(-20);
+    console.log('✂️  [PREPROCESSING] Analyzing last', recentMessages.length, 'messages');
+
+    // Log message breakdown by role
+    const userMsgs = recentMessages.filter(m => m.role === 'user').length;
+    const aiMsgs = recentMessages.filter(m => m.role === 'assistant').length;
+    console.log('   └─ User messages:', userMsgs, '| AI messages:', aiMsgs);
+
+    // Create cache key from last 5 messages (enough to identify conversation)
+    const cacheKey = recentMessages.slice(-5).map(m => m.text.slice(0, 50)).join('|');
+
+    // Check cache
+    const cached = friendshipCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      console.log('💾 [CACHE] Using cached score');
+      console.log('✅ [FRIENDSHIP POSITIONING] COMPLETED (cached) - Score:', cached.score.overall);
+      console.log('═'.repeat(60) + '\n');
+      return cached.score;
+    }
+
+    if (recentMessages.length === 0) {
+      console.error('❌ [ERROR] No messages to analyze');
+      console.log('═'.repeat(60) + '\n');
+      return getDefaultFriendshipScore();
+    }
+
+    console.log('🔍 [ANALYSIS] Starting AI-based friendship scoring...');
+    console.log('   ├─ API Priority: DeepSeek V4 Flash (primary) → Groq (fallback)');
+    console.log('   ├─ Cache: Miss (fresh analysis)');
+    console.log('   └─ Message preview:', recentMessages[0]?.text?.substring(0, 50) + '...');
+
+    const systemPrompt = `You are an expert evaluator of AI-human conversations, specifically for astrologer chatbots.
+Your task is to SCORE how well this AI astrologer builds a GENUINE friendship connection with users.
+
+IMPORTANT: Base your scores ONLY on actual evidence in the conversation. Be fair and objective.
+
+SCORING CRITERIA (1-10 scale for each):
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. EMPATHY (Emotional Connection)
+   Does the bot acknowledge and validate the user's feelings?
+
+   SCORE 10: "I can hear how worried you are about your career. Let me look at your chart together."
+   SCORE 7: "I understand your concern about career."
+   SCORE 4: "Your career will be fine." (no emotion acknowledgment)
+   SCORE 1: "Career prediction coming up." (completely ignores emotion)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+2. PERSONALIZATION (Remembers Context & User Details)
+   Does the bot reference previous conversations or remember user-specific information?
+
+   SCORE 10: "Like we discussed last week, your Saturn period is challenging now..."
+   SCORE 7: "Based on what you mentioned earlier..."
+   SCORE 4: "Let me check your birth chart..." (doesn't reference past context)
+   SCORE 1: Generic advice that could apply to anyone (no personalization)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+3. WARMTH (Friendly, Conversational Tone)
+   Is the tone warm and natural, or robotic/formal?
+
+   SCORE 10: "I'm really glad you reached out! Let's figure this out together."
+   SCORE 7: "Happy to help with this."
+   SCORE 4: "I will now analyze your chart." (robotic/formal)
+   SCORE 1: "Provide birth details for analysis." (completely mechanical)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+4. SUPPORTIVE LISTENING (Asks Follow-up Questions)
+   Does the bot explore the issue before giving solutions?
+
+   SCORE 10: "That sounds difficult. Can you tell me more about when this started?"
+   SCORE 7: "What specifically concerns you the most?"
+   SCORE 4: Gives advice without asking any follow-up questions
+   SCORE 1: "Here is your prediction." (immediate solution, no exploration)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+5. RAPPORT (Builds Trust & Shows Care)
+   Does the bot create a sense of partnership and ongoing support?
+
+   SCORE 10: "I'm here for you through this. Let's work on remedies together."
+   SCORE 7: "I can guide you on this journey."
+   SCORE 4: Transactional exchange (question → answer, no partnership)
+   SCORE 1: Mechanical, disconnected responses
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SCORING GUIDELINES:
+- Overall score = AVERAGE of all 5 dimensions
+- If conversation has <5 exchanges, reduce confidence score
+- Be objective - score based on EVIDENCE in conversation
+- If uncertain about a dimension, give mid-range score (5-6)
+- Provide SPECIFIC quotes from conversation for strengths/improvements
+
+Return ONLY valid JSON:
+{
+  "overall": 8.2,
+  "empathy": 8,
+  "personalization": 7,
+  "warmth": 9,
+  "supportive_listening": 8,
+  "rapport": 8,
+  "confidence": 0.85,
+  "strengths": ["Quote specific example: 'I can hear how worried you are'"],
+  "improvements": ["Quote specific example: 'Your Saturn period is difficult' - too direct"]
+}`;
+
+    // Build prompt with truncated conversation to reduce token usage
+    const prompt = `Analyze this conversation and provide EVIDENCE-BASED friendship positioning score.
+
+CONVERSATION (${recentMessages.length} messages, truncated to 200 chars each):
+${recentMessages.map((m) => {
+      const role = m.role === 'user' ? 'User' : 'AI';
+      const truncatedText = m.text.length > 200 ? m.text.substring(0, 200) + '...' : m.text;
+      return `${role}: ${truncatedText}`;
+    }).join('\n\n')}
+
+INSTRUCTIONS:
+1. Score each dimension (1-10) based on SPECIFIC examples from conversation
+2. For strengths: quote actual bot responses that demonstrate good friendship building
+3. For improvements: quote actual bot responses that need improvement
+4. Set confidence lower if conversation is too short (<10 messages)
+
+Provide the friendship positioning score as JSON only.`;
+
+    // Call AI API - Use Groq directly for single user analysis (last 20 messages)
+    console.log('📡 [API] Sending request to Groq for single user analysis...');
+    const result = await callGroqDirect(prompt, systemPrompt);
+
+    // Parse and validate response
+    console.log('📄 [PARSING] Parsing AI response...');
+    const parsed = safeJSONParse(result, getDefaultFriendshipScore());
+
+    // Ensure scores are within 1-10 range
+    const clampScore = (score: number) => Math.max(1, Math.min(10, score || 5));
+
+    // Adjust confidence based on conversation length (using 20 messages)
+    let confidence = parsed.confidence || 0.8;
+    if (recentMessages.length < 10) {
+      confidence = Math.max(0.5, confidence - 0.2);
+    }
+
+    const finalScore = {
+      overall: clampScore(parsed.overall),
+      empathy: clampScore(parsed.empathy),
+      personalization: clampScore(parsed.personalization),
+      warmth: clampScore(parsed.warmth),
+      supportive_listening: clampScore(parsed.supportive_listening),
+      rapport: clampScore(parsed.rapport),
+      confidence,
+      strengths: Array.isArray(parsed.strengths) ? parsed.strengths.slice(0, 3) : [],
+      improvements: Array.isArray(parsed.improvements) ? parsed.improvements.slice(0, 3) : []
+    };
+
+    // Save to cache
+    friendshipCache.set(cacheKey, { score: finalScore, timestamp: Date.now() });
+
+    // Success logging
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+    console.log('\n' + '✅ [SUCCESS] Friendship score calculated successfully!');
+    console.log('─'.repeat(60));
+    console.log('   ├─ Overall Score:', finalScore.overall, '/ 10');
+    console.log('   ├─ Empathy:', finalScore.empathy, '| Personalization:', finalScore.personalization);
+    console.log('   ├─ Warmth:', finalScore.warmth, '| Listening:', finalScore.supportive_listening);
+    console.log('   ├─ Rapport:', finalScore.rapport, '| Confidence:', finalScore.confidence);
+    console.log('   ├─ Duration:', duration, 'seconds');
+    console.log('   ├─ Messages analyzed:', recentMessages.length, '/', messages.length);
+    console.log('   └─ Strengths:', finalScore.strengths.length, '| Improvements:', finalScore.improvements.length);
+    console.log('═'.repeat(60) + '\n');
+
+    return finalScore;
+  } catch (error) {
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+    console.error('\n' + '❌ [FAILURE] Friendship analysis FAILED!');
+    console.error('─'.repeat(60));
+    console.error('   ├─ Duration:', duration, 'seconds');
+    console.error('   ├─ Messages available:', messages.length);
+    console.error('   ├─ Error type:', error instanceof Error ? error.constructor.name : typeof error);
+    console.error('   └─ Error message:', error instanceof Error ? error.message : String(error));
+
+    if (axios.isAxiosError(error)) {
+      console.error('\n   🌐 [AXIOS ERROR DETAILS]:');
+      console.error('      ├─ Status:', error.response?.status || 'No response');
+      console.error('      ├─ Status Text:', error.response?.statusText || 'N/A');
+      console.error('      └─ Data:', error.response?.data ? JSON.stringify(error.response.data).substring(0, 200) : 'N/A');
+    }
+
+    console.error('═'.repeat(60) + '\n');
+    return getDefaultFriendshipScore();
+  }
+}
+
+/**
+ * Batch analyze friendship positioning for multiple users
+ * Processes users sequentially to respect rate limits
+ *
+ * @param usersMap - Map of userId to messages array
+ * @param onProgress - Callback for progress updates
+ * @returns Map of userId to FriendshipPositioning score
+ */
+export async function batchAnalyzeFriendshipPositioning(
+  usersMap: Map<string, Array<{role: string; text: string}>>,
+  onProgress?: (current: number, total: number, userId: string) => void
+): Promise<Map<string, FriendshipPositioning>> {
+  const results = new Map<string, FriendshipPositioning>();
+  const userIds = Array.from(usersMap.keys());
+  const total = userIds.length;
+  const startTime = Date.now();
+
+  console.log('\n' + '═'.repeat(60));
+  console.log('🚀 [BATCH ANALYSIS] Starting friendship score batch processing');
+  console.log('═'.repeat(60));
+  console.log('📊 [INPUT] Total users to process:', total);
+
+  // Count messages across all users
+  let totalMessages = 0;
+  for (const [_, msgs] of usersMap) {
+    totalMessages += msgs.length;
+  }
+  console.log('📨 [INPUT] Total messages across all users:', totalMessages);
+  console.log('⚙️  [CONFIG] Primary API: DeepSeek V4 Flash (cheap, fast, great reasoning)');
+  console.log('⚙️  [CONFIG] Fallback API: Groq Llama 3.1 (free tier, rate limited)');
+  console.log('⚙️  [CONFIG] Rate limit delay: 5000ms between users (5s)');
+  console.log('⚙️  [CONFIG] Messages per user: 20 (truncated to 200 chars each)');
+  console.log('⚙️  [CONFIG] Retry attempts: 3 (with exponential backoff)');
+  console.log('═'.repeat(60) + '\n');
+
+  let successCount = 0;
+  let failureCount = 0;
+
+  for (let i = 0; i < userIds.length; i++) {
+    const userId = userIds[i];
+    const messages = usersMap.get(userId) || [];
+
+    try {
+      // Call progress callback
+      if (onProgress) {
+        onProgress(i + 1, total, userId);
+      }
+
+      // Progress logging
+      const progressPct = Math.round(((i + 1) / total) * 100);
+      console.log(`📈 [BATCH] ${i + 1}/${total} (${progressPct}%) - Analyzing ${userId} (${messages.length} messages)`);
+
+      // For batch: use DeepSeek for faster, cheaper processing
+      // Take last 20 messages per user (same as single user)
+      const recentMessages = messages.slice(-20);
+
+      // Build prompt for this user
+      const systemPrompt = `You are an expert evaluator of AI-human conversations, specifically for astrologer chatbots.
+Your task is to SCORE how well this AI astrologer builds a GENUINE friendship connection with users.
+
+IMPORTANT: Base your scores ONLY on actual evidence in the conversation. Be fair and objective.
+
+SCORING CRITERIA (1-10 scale for each): EMPATHY, PERSONALIZATION, WARMTH, SUPPORTIVE_LISTENING, RAPPORT
+Overall score = AVERAGE of all 5 dimensions
+
+Return ONLY valid JSON:
+{
+  "overall": 8.2,
+  "empathy": 8,
+  "personalization": 7,
+  "warmth": 9,
+  "supportive_listening": 8,
+  "rapport": 8,
+  "confidence": 0.85,
+  "strengths": ["Specific example from conversation"],
+  "improvements": ["Specific example from conversation"]
+}`;
+
+      const prompt = `Analyze this conversation and provide EVIDENCE-BASED friendship positioning score.
+
+CONVERSATION (${recentMessages.length} messages, truncated to 200 chars each):
+${recentMessages.map((m) => {
+    const role = m.role === 'user' ? 'User' : 'AI';
+    const truncatedText = m.text.length > 200 ? m.text.substring(0, 200) + '...' : m.text;
+    return `${role}: ${truncatedText}`;
+  }).join('\n\n')}
+
+Provide the friendship positioning score as JSON only.`;
+
+      // Use DeepSeek for batch (faster, cheaper)
+      const result = await callDeepSeekDirect(prompt, systemPrompt);
+      const parsed = safeJSONParse(result, getDefaultFriendshipScore());
+
+      // Clamp scores to 1-10 range
+      const clampScore = (score: number) => Math.max(1, Math.min(10, score || 5));
+
+      const score = {
+        overall: clampScore(parsed.overall),
+        empathy: clampScore(parsed.empathy),
+        personalization: clampScore(parsed.personalization),
+        warmth: clampScore(parsed.warmth),
+        supportive_listening: clampScore(parsed.supportive_listening),
+        rapport: clampScore(parsed.rapport),
+        confidence: parsed.confidence || 0.8,
+        strengths: Array.isArray(parsed.strengths) ? parsed.strengths.slice(0, 3) : [],
+        improvements: Array.isArray(parsed.improvements) ? parsed.improvements.slice(0, 3) : []
+      };
+      results.set(userId, score);
+
+      // Check if score is valid (not default/failed)
+      if (score.confidence > 0) {
+        successCount++;
+        console.log(`   ✅ Score: ${score.overall}/10 (confidence: ${score.confidence})`);
+      } else {
+        failureCount++;
+        console.log(`   ⚠️  Failed or default score`);
+      }
+
+      // Add delay to respect rate limits (5 seconds between users)
+      // Groq free tier: 6000 TPM, so we need to pace requests
+      if (i < userIds.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+    } catch (error) {
+      failureCount++;
+      console.error(`   ❌ [BATCH] Failed for ${userId}:`, error instanceof Error ? error.message : String(error));
+      // Set default score on failure
+      results.set(userId, getDefaultFriendshipScore());
+    }
+  }
+
+  // Final summary
+  const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+  console.log('\n' + '═'.repeat(60));
+  console.log('🏁 [BATCH ANALYSIS] COMPLETED');
+  console.log('═'.repeat(60));
+  console.log('📊 [SUMMARY]');
+  console.log(`   ├─ Total users processed: ${results.size}/${total}`);
+  console.log(`   ├─ Successful: ${successCount} (${Math.round(successCount/total*100)}%)`);
+  console.log(`   ├─ Failed: ${failureCount} (${Math.round(failureCount/total*100)}%)`);
+  console.log(`   ├─ Total duration: ${duration}s`);
+  console.log(`   ├─ Average per user: ${(parseFloat(duration)/total).toFixed(2)}s`);
+  console.log(`   └─ Total messages analyzed: ${totalMessages}`);
+  console.log('═'.repeat(60) + '\n');
+
+  return results;
+}
+
+/**
+ * Default friendship score when analysis fails
+ */
+function getDefaultFriendshipScore(): FriendshipPositioning {
+  return {
+    overall: 5,
+    empathy: 5,
+    personalization: 5,
+    warmth: 5,
+    supportive_listening: 5,
+    rapport: 5,
+    confidence: 0,
+    strengths: [],
+    improvements: ['Analysis failed - please try again']
+  };
 }

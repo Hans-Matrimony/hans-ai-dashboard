@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useEffect, useState } from 'react';
-import { Users, CheckCircle, Clock, TrendingUp } from 'lucide-react';
+import { Users, CheckCircle, Clock, TrendingUp, Heart } from 'lucide-react';
 
 const navItems = [
     {
@@ -51,6 +51,13 @@ const navItems = [
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
+        ),
+    },
+    {
+        label: 'Friendship Analysis',
+        href: '/friendship-analysis',
+        icon: (
+            <Heart className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} />
         ),
     },
     {
