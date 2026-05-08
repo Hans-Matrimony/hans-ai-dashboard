@@ -32,21 +32,25 @@ export async function POST(request: NextRequest) {
     const userId = searchParams.get('userId');
 
     if (!userId) {
+      console.log('[Friendship Single] ❌ Missing userId parameter');
       return NextResponse.json({
         error: 'userId parameter is required'
       }, { status: 400 });
     }
 
-    console.log('[Friendship Single] Calculating for user:', userId);
+    console.log(`[Friendship Single] 📊 Score request received for userId: ${userId} at ${new Date().toISOString()}`);
 
     // 1. Fetch user data from MongoDB Logger
+    console.log(`[Friendship Single] 📡 Fetching data from MongoDB Logger...`);
     const mongoResponse = await axios.get(`${MONGO_LOGGER_URL}/messages?userId=${encodeURIComponent(userId)}`, {
       timeout: 30000
     });
 
     const userData = mongoResponse.data;
+    console.log(`[Friendship Single] 📥 Received data - sessions: ${userData?.sessions?.length || 0}`);
 
     if (!userData || !userData.sessions) {
+      console.log(`[Friendship Single] ❌ No sessions found for userId: ${userId}`);
       return NextResponse.json({
         error: 'No sessions found for this user'
       }, { status: 404 });
@@ -55,6 +59,8 @@ export async function POST(request: NextRequest) {
     // 2. Extract friendship scores from assistant message metadata
     const scoresFromMetadata: FriendshipScore[] = [];
     const sessions = userData.sessions || [];
+
+    console.log(`[Friendship Single] 🔍 Scanning ${sessions.length} sessions for friendship scores in metadata...`);
 
     for (const session of sessions) {
       const messages = session.messages || [];
@@ -70,7 +76,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log('[Friendship Single] Found', scoresFromMetadata.length, 'scores in metadata');
+    console.log(`[Friendship Single] ✅ Found ${scoresFromMetadata.length} friendship scores in metadata`);
+    if (scoresFromMetadata.length > 0) {
+      const avgOverall = scoresFromMetadata.reduce((sum, s) => sum + s.overall, 0) / scoresFromMetadata.length;
+      console.log(`[Friendship Single] 📈 Average overall score: ${avgOverall.toFixed(2)}`);
+    }
 
     // 3. Calculate cumulative average from metadata scores
     if (scoresFromMetadata.length > 0) {
@@ -116,7 +126,8 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Fallback: If no scores in metadata, use AI analysis (for older conversations)
-    console.log('[Friendship Single] No scores in metadata, using AI fallback');
+    console.log(`[Friendship Single] ⚠️ No scores in metadata - using AI analysis fallback`);
+    console.log(`[Friendship Single] 🤖 Starting AI analysis (slower, has cost) at ${new Date().toISOString()}`);
 
     // Extract all messages for AI analysis
     const allMessages: Array<{role: string; text: string}> = [];
@@ -133,17 +144,20 @@ export async function POST(request: NextRequest) {
     }
 
     if (allMessages.length === 0) {
+      console.log(`[Friendship Single] ❌ No messages found for AI analysis`);
       return NextResponse.json({
         error: 'No messages found for this user'
       }, { status: 404 });
     }
 
-    console.log('[Friendship Single] Analyzing', allMessages.length, 'messages');
+    console.log(`[Friendship Single] 📝 Analyzing ${allMessages.length} messages with AI`);
 
     // Use AI analysis as fallback
+    const startTime = Date.now();
     const score = await analyzeFriendshipPositioning(allMessages);
+    const analysisTime = Date.now() - startTime;
 
-    console.log('[Friendship Single] AI fallback result:', score.overall);
+    console.log(`[Friendship Single] ✅ AI analysis complete - overall: ${score.overall}, took ${analysisTime}ms`);
 
     return NextResponse.json({
       userId,
