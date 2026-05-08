@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef, useCallback, Suspense } from 'rea
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { useSearchParams } from 'next/navigation';
+import { FriendshipPositioning } from '@/lib/analytics-types';
 
 /* ──────── Types ──────── */
 interface Message {
@@ -224,6 +225,11 @@ function ChatLogsContent() {
     // deleting state
     const [deleting, setDeleting] = useState(false);
 
+    // friendship scores state
+    const [friendshipScores, setFriendshipScores] = useState<Map<string, FriendshipPositioning>>(new Map());
+    const [calculatingFriendship, setCalculatingFriendship] = useState(false);
+    const [friendshipProgress, setFriendshipProgress] = useState<{current: number; total: number; userId: string} | null>(null);
+
     // Toggle fullscreen with URL sync
     const toggleFullscreen = useCallback(() => {
         const next = !isFullscreen;
@@ -311,6 +317,120 @@ function ChatLogsContent() {
             alert(`Network error: ${err}`);
         }
         setDeleting(false);
+    };
+
+    // Calculate friendship scores for all users
+    const handleCalculateFriendshipScores = async () => {
+        if (!data || calculatingFriendship) return;
+
+        const userCount = filteredUsers.length;
+        if (userCount === 0) {
+            alert('No users to analyze');
+            return;
+        }
+
+        if (!window.confirm(`Calculate friendship scores for ${userCount} users?\n\nThis will take approximately ${Math.ceil(userCount / 2)} seconds.`)) {
+            return;
+        }
+
+        setCalculatingFriendship(true);
+        setFriendshipProgress({ current: 0, total: userCount, userId: 'Starting...' });
+
+        try {
+            const params = new URLSearchParams();
+            params.append('limit', userCount.toString());
+            if (channelFilter !== 'all') {
+                params.append('channel', channelFilter);
+            }
+
+            const response = await fetch(`/api/chat-logs/friendship/batch?${params.toString()}`, {
+                method: 'POST'
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to calculate friendship scores');
+            }
+
+            const result = await response.json();
+
+            // Convert results array to Map
+            const scoresMap = new Map<string, FriendshipPositioning>();
+            for (const item of result.results) {
+                scoresMap.set(item.userId, item.score);
+            }
+
+            setFriendshipScores(scoresMap);
+
+            // Show summary
+            alert(`✅ Friendship scores calculated!\n\nAnalyzed: ${result.analyzed} users\nSkipped: ${result.skipped} users (not enough messages)\n\nAverage Score: ${result.statistics.average}/10\nHigh (7+): ${result.statistics.high}\nMedium (5-7): ${result.statistics.medium}\nLow (<5): ${result.statistics.low}`);
+
+        } catch (error) {
+            console.error('Friendship batch calculation error:', error);
+            alert(`Error: ${error instanceof Error ? error.message : 'Failed to calculate friendship scores'}`);
+        } finally {
+            setCalculatingFriendship(false);
+            setFriendshipProgress(null);
+        }
+    };
+
+    // Calculate friendship score for a single user
+    const handleCalculateSingleFriendship = async (userId: string) => {
+        if (calculatingFriendship) return;
+
+        setCalculatingFriendship(true);
+
+        try {
+            console.log('[Friendship Single] Requesting score for userId:', userId);
+            const url = `/api/chat-logs/friendship/single?userId=${encodeURIComponent(userId)}`;
+            console.log('[Friendship Single] URL:', url);
+
+            const response = await fetch(url, {
+                method: 'POST'
+            });
+
+            console.log('[Friendship Single] Response status:', response.status);
+            console.log('[Friendship Single] Response ok:', response.ok);
+
+            // Get raw text first to debug
+            const text = await response.text();
+            console.log('[Friendship Single] Response (first 200 chars):', text.substring(0, 200));
+
+            if (!response.ok) {
+                let error;
+                try {
+                    error = JSON.parse(text);
+                } catch {
+                    error = { error: text.substring(0, 200) };
+                }
+                throw new Error(error.error || 'Failed to calculate friendship score');
+            }
+
+            const result = JSON.parse(text);
+
+            // Update scores map
+            setFriendshipScores(prev => new Map(prev).set(userId, result.score));
+
+        } catch (error) {
+            console.error('Friendship single calculation error:', error);
+            alert(`Error: ${error instanceof Error ? error.message : 'Failed to calculate friendship score'}`);
+        } finally {
+            setCalculatingFriendship(false);
+        }
+    };
+
+    // Get friendship score color
+    const getFriendshipColor = (score: number) => {
+        if (score >= 7) return 'text-emerald-600 bg-emerald-50 border-emerald-200';
+        if (score >= 5) return 'text-amber-600 bg-amber-50 border-amber-200';
+        return 'text-red-600 bg-red-50 border-red-200';
+    };
+
+    // Get friendship icon
+    const getFriendshipIcon = (score: number) => {
+        if (score >= 7) return '🤝';
+        if (score >= 5) return '👋';
+        return '❄️';
     };
 
     // fetch data
@@ -656,7 +776,7 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                         </div>
 
                         {/* Search + Filters */}
-                        <div className="flex items-center gap-3 flex-wrap">
+                        <div className="flex items-center gap-3 flex-wrap overflow-x-auto pb-2">
                             {/* Date Range Filter */}
                             <div className="flex items-center gap-2 bg-slate-50 rounded-xl border border-slate-200 p-1.5">
                                 <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -718,6 +838,33 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                                 </svg>
                                 AI Analytics
                             </Link>
+
+                            {/* Calculate Friendship Scores Button - Compact */}
+                            <button
+                                onClick={handleCalculateFriendshipScores}
+                                disabled={calculatingFriendship || !data}
+                                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium transition-all shrink-0 ${
+                                    calculatingFriendship
+                                        ? 'bg-pink-50 border-pink-200 text-pink-600'
+                                        : 'bg-white border-slate-200 text-slate-600 hover:border-pink-200 hover:text-pink-600'
+                                }`}
+                                title="Calculate friendship scores for all users"
+                            >
+                                {calculatingFriendship ? (
+                                    <>
+                                        <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                        </svg>
+                                        {friendshipProgress ? `${friendshipProgress.current}/${friendshipProgress.total}` : '...'}
+                                    </>
+                                ) : (
+                                    <>
+                                        <span>🤝</span>
+                                        <span className="hidden sm:inline">Scores</span>
+                                    </>
+                                )}
+                            </button>
 
                             {/* Search */}
                             <div className="relative">
@@ -1020,6 +1167,7 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                             ) : (
                                 filteredUsers.map(user => {
                                     const active = isUserActive(user);
+                                    const friendshipScore = friendshipScores.get(user.userId);
                                     return (
                                         <button
                                             key={user._id}
@@ -1047,10 +1195,25 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                                                         )}
                                                         <p className="text-sm font-semibold text-slate-800 truncate">{user.userId}</p>
                                                     </div>
-                                                    <div className="flex items-center gap-2 mt-1.5">
+                                                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                                        {/* Channel badge */}
                                                         <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border ${channelColor(user.sessions[0]?.channel)}`}>
                                                             {channelIcon(user.sessions[0]?.channel)} {user.sessions[0]?.channel}
                                                         </span>
+
+                                                        {/* Friendship Score Badge */}
+                                                        {friendshipScore ? (
+                                                            <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border ${getFriendshipColor(friendshipScore.overall)}`}>
+                                                                {getFriendshipIcon(friendshipScore.overall)} {friendshipScore.overall.toFixed(1)}
+                                                            </span>
+                                                        ) : calculatingFriendship ? (
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full border border-slate-200 bg-slate-50 text-slate-400">
+                                                                <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                                                </svg>
+                                                            </span>
+                                                        ) : null}
                                                     </div>
                                                 </div>
                                                 <div className="text-right shrink-0">
@@ -1078,9 +1241,9 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                             isFullscreen && "rounded-none border-0 bg-slate-900"
                         )}>
                             {/* Session header */}
-                            <div className="shrink-0 p-4 border-b border-slate-100">
+                            <div className="shrink-0 p-3 border-b border-slate-100">
                                 <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2">
                                         {/* Back button (mobile) */}
                                         <button
                                             onClick={() => { setSelectedUserId(null); setSelectedSessionId(null); }}
@@ -1091,10 +1254,58 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                                             </svg>
                                         </button>
                                         <div>
-                                            <h2 className="text-sm font-bold text-slate-800">{selectedUser.userId}</h2>
-                                            <p className="text-[11px] text-slate-400 mt-0.5">
-                                                {selectedUser.sessions.length} session{selectedUser.sessions.length !== 1 ? 's' : ''} · {totalMessages(selectedUser)} total messages
-                                            </p>
+                                            <div className="flex items-center gap-2">
+                                                <h2 className="text-sm font-bold text-slate-800">{selectedUser.userId}</h2>
+                                                {/* Friendship Score Badge (Inline) */}
+                                                {(() => {
+                                                    const friendshipScore = friendshipScores.get(selectedUser.userId);
+                                                    if (friendshipScore) {
+                                                        return (
+                                                            <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                                                                friendshipScore.overall >= 7 ? 'text-emerald-600 bg-emerald-50 border-emerald-200' :
+                                                                friendshipScore.overall >= 5 ? 'text-amber-600 bg-amber-50 border-amber-200' :
+                                                                'text-red-600 bg-red-50 border-red-200'
+                                                            }`}>
+                                                                🤝 {friendshipScore.overall.toFixed(1)}
+                                                            </span>
+                                                        );
+                                                    }
+                                                    return null;
+                                                })()}
+                                            </div>
+                                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                                <p className="text-[10px] text-slate-400">
+                                                    {selectedUser.sessions.length} session{selectedUser.sessions.length !== 1 ? 's' : ''} · {totalMessages(selectedUser)} msgs
+                                                </p>
+                                                {/* Calculate Score Button (Inline) */}
+                                                {(!friendshipScores.has(selectedUser.userId) && !calculatingFriendship) && (
+                                                    <button
+                                                        onClick={() => handleCalculateSingleFriendship(selectedUser.userId)}
+                                                        className="text-[10px] text-pink-600 hover:text-pink-700 font-medium flex items-center gap-1"
+                                                    >
+                                                        ⚡ Calculate Score
+                                                    </button>
+                                                )}
+                                                {calculatingFriendship && !friendshipScores.has(selectedUser.userId) && (
+                                                    <span className="text-[10px] text-pink-500 flex items-center gap-1">
+                                                        <svg className="animate-spin h-2 w-2" fill="none" viewBox="0 0 24 24">
+                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                                        </svg>
+                                                        Analyzing...
+                                                    </span>
+                                                )}
+                                                {/* Refresh Score Button (Inline) */}
+                                                {friendshipScores.has(selectedUser.userId) && !calculatingFriendship && (
+                                                    <button
+                                                        onClick={() => handleCalculateSingleFriendship(selectedUser.userId)}
+                                                        className="text-[10px] text-slate-400 hover:text-pink-600 flex items-center gap-1"
+                                                        title="Refresh score"
+                                                    >
+                                                        ↻
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
 
@@ -1116,51 +1327,132 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                                         </div>
                                     )}
 
-                                    {/* Fullscreen Toggle */}
-                                    <button
-                                        onClick={toggleFullscreen}
-                                        className={`p-2 rounded-lg transition-all ${isFullscreen
-                                            ? 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200'
-                                            : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-100'
-                                            }`}
-                                        title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-                                    >
-                                        {isFullscreen ? (
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                            </svg>
-                                        ) : (
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-                                            </svg>
-                                        )}
-                                    </button>
+                                    {/* Action buttons */}
+                                    <div className="flex items-center gap-1">
+                                        {/* Fullscreen Toggle */}
+                                        <button
+                                            onClick={toggleFullscreen}
+                                            className={`p-2 rounded-lg transition-all ${isFullscreen
+                                                ? 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200'
+                                                : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-100'
+                                                }`}
+                                            title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                                        >
+                                            {isFullscreen ? (
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                </svg>
+                                            ) : (
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                                                </svg>
+                                            )}
+                                        </button>
 
-                                    {/* Delete User button */}
-                                    <button
-                                        onClick={() => handleDeleteUser(selectedUser.userId)}
-                                        disabled={deleting}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-500 hover:bg-red-50 hover:text-red-700 border border-transparent hover:border-red-200 transition-all disabled:opacity-50"
-                                        title={`Delete all records for ${selectedUser.userId}`}
-                                    >
-                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                        </svg>
-                                        Delete
-                                    </button>
+                                        {/* Delete User button */}
+                                        <button
+                                            onClick={() => handleDeleteUser(selectedUser.userId)}
+                                            disabled={deleting}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-500 hover:bg-red-50 hover:text-red-700 border border-transparent hover:border-red-200 transition-all disabled:opacity-50"
+                                            title={`Delete all records for ${selectedUser.userId}`}
+                                        >
+                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                            </svg>
+                                            Delete
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {/* Session info bar */}
                                 {selectedSession && (
-                                    <div className="flex items-center gap-4 mt-3 text-[11px] text-slate-400">
+                                    <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400">
                                         <span className={`inline-flex items-center gap-1 font-medium px-2 py-0.5 rounded-full border ${channelColor(selectedSession.channel)}`}>
                                             {channelIcon(selectedSession.channel)} {selectedSession.channel}
                                         </span>
                                         <span>Started: {fmtTime(selectedSession.startTime)}</span>
+                                        <span>·</span>
                                         <span>Last: {fmtTime(latestActivity(selectedUser) || selectedSession.lastMessageTime)}</span>
+                                        <span>·</span>
                                         <span>{selectedSession.messages.length} messages</span>
                                     </div>
                                 )}
+
+                                {/* Compact Friendship Score Details (Collapsible) */}
+                                {selectedUserId && friendshipScores.has(selectedUserId) && (() => {
+                                    const score = friendshipScores.get(selectedUserId);
+                                    if (!score) return null;
+                                    return (
+                                        <div className="mt-2 bg-slate-50 rounded-lg p-2 border border-slate-200">
+                                            <details className="group">
+                                                <summary className="flex items-center justify-between cursor-pointer list-none">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-sm">🤝</span>
+                                                        <span className="text-[11px] font-medium text-slate-700">
+                                                            Friendship: <span className={`font-bold ${
+                                                                score.overall >= 7 ? 'text-emerald-600' : score.overall >= 5 ? 'text-amber-600' : 'text-red-600'
+                                                            }`}>{score.overall.toFixed(1)}/10</span>
+                                                        </span>
+                                                        <span className={`text-[9px] px-1.5 py-0.5 rounded ${
+                                                            score.overall >= 7 ? 'bg-emerald-100 text-emerald-700' :
+                                                            score.overall >= 5 ? 'bg-amber-100 text-amber-700' :
+                                                            'bg-red-100 text-red-700'
+                                                        }`}>
+                                                            {score.overall >= 7 ? 'Excellent' : score.overall >= 5 ? 'Good' : 'Needs Work'}
+                                                        </span>
+                                                    </div>
+                                                    <svg className="w-4 h-4 text-slate-400 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                    </svg>
+                                                </summary>
+                                                <div className="mt-2 pt-2 border-t border-slate-200">
+                                                    {/* Metrics Grid */}
+                                                    <div className="grid grid-cols-5 gap-1.5 mb-2">
+                                                        {[
+                                                            { key: 'empathy', label: 'Empathy', value: score.empathy },
+                                                            { key: 'personalization', label: 'Personal', value: score.personalization },
+                                                            { key: 'warmth', label: 'Warmth', value: score.warmth },
+                                                            { key: 'supportive_listening', label: 'Listening', value: score.supportive_listening },
+                                                            { key: 'rapport', label: 'Rapport', value: score.rapport },
+                                                        ].map((metric) => (
+                                                            <div key={metric.key} className="text-center bg-white rounded p-1.5 border border-slate-200">
+                                                                <p className={`text-xs font-bold ${
+                                                                    metric.value >= 7 ? 'text-emerald-600' : metric.value >= 5 ? 'text-amber-600' : 'text-red-600'
+                                                                }`}>
+                                                                    {metric.value}
+                                                                </p>
+                                                                <p className="text-[7px] text-slate-500 uppercase">{metric.label}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    {/* Strengths & Improvements */}
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        {score.strengths.length > 0 && (
+                                                            <div className="bg-emerald-50 rounded p-1.5 border border-emerald-200">
+                                                                <p className="text-[9px] font-medium text-emerald-800 mb-1">✓ Strengths</p>
+                                                                <ul className="space-y-0.5">
+                                                                    {score.strengths.slice(0, 2).map((strength, i) => (
+                                                                        <li key={i} className="text-[9px] text-emerald-700 truncate" title={strength}>• {strength}</li>
+                                                                    ))}
+                                                                </ul>
+                                                            </div>
+                                                        )}
+                                                        {score.improvements.length > 0 && (
+                                                            <div className="bg-amber-50 rounded p-1.5 border border-amber-200">
+                                                                <p className="text-[9px] font-medium text-amber-800 mb-1">💡 Improve</p>
+                                                                <ul className="space-y-0.5">
+                                                                    {score.improvements.slice(0, 2).map((improvement, i) => (
+                                                                        <li key={i} className="text-[9px] text-amber-700 truncate" title={improvement}>• {improvement}</li>
+                                                                    ))}
+                                                                </ul>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </details>
+                                        </div>
+                                    );
+                                })()}
                             </div>
 
                             {/* Messages */}

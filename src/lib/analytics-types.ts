@@ -192,3 +192,20 @@ export interface DetailedAnalytics {
   topic_performance: TopicPerformance[];
   last_updated: string;
 }
+
+/**
+ * Friendship Positioning Score
+ * Measures how well the AI agent builds a friend-like connection with users
+ * Scored on a scale of 1-10
+ */
+export interface FriendshipPositioning {
+  overall: number;           // 1-10: Overall friendship score
+  empathy: number;           // 1-10: Acknowledges feelings, validates emotions
+  personalization: number;   // 1-10: Remembers context, personal touches
+  warmth: number;            // 1-10: Friendly, conversational tone (not robotic)
+  supportive_listening: number; // 1-10: Asks follow-ups, doesn't rush to solutions
+  rapport: number;           // 1-10: Builds trust, shows genuine care
+  confidence: number;        // 0-1: AI's confidence in the scoring
+  strengths: string[];       // What the bot does well
+  improvements: string[];    // Areas that need improvement
+}
