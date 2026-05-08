@@ -22,6 +22,14 @@ interface Message {
         hours_inactive?: number;
         timestamp?: string;
         dob?: string;
+        friendshipScore?: {
+            overall: number;
+            empathy: number;
+            personalization: number;
+            warmth: number;
+            supportive_listening: number;
+            rapport: number;
+        };
     };
 }
 
@@ -1482,6 +1490,19 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                                                     }`}>
                                                     {msg.role === 'user' ? '👤 User' : '🤖 Assistant'}
                                                 </span>
+
+                                                {/* Friendship Score Badge (for assistant messages only) */}
+                                                {msg.role === 'assistant' && msg.metadata?.friendshipScore && (
+                                                    <span className={`inline-flex items-center gap-1 text-[9px] font-medium px-2 py-0.5 rounded-full border ${
+                                                        msg.metadata.friendshipScore.overall >= 7
+                                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                            : msg.metadata.friendshipScore.overall >= 5
+                                                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                                            : 'bg-red-50 text-red-700 border-red-200'
+                                                    }`} title={`Empathy: ${msg.metadata.friendshipScore.empathy} | Warmth: ${msg.metadata.friendshipScore.warmth} | Personalization: ${msg.metadata.friendshipScore.personalization}`}>
+                                                        🤝 {msg.metadata.friendshipScore.overall.toFixed(1)}
+                                                    </span>
+                                                )}
 
                                                 {/* Message type badge */}
                                                 {getMessageTypeBadge(msg.messageType || '')}
