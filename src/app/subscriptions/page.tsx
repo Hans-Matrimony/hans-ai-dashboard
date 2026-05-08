@@ -53,6 +53,9 @@ interface Subscription {
   daysRemaining?: number;
   daysSinceExpired?: number;
   daysPassed?: number;
+  renewalCount?: number;
+  cancelledAt?: string;
+  isCancelled?: boolean;
 }
 
 interface SubscriptionsResponse {
@@ -208,10 +211,11 @@ export default function SubscriptionsPage() {
     total: data?.total || 0,
     active: data?.subscriptions.filter(s => s.status === 'active').length || 0,
     expired: data?.subscriptions.filter(s => s.status === 'expired').length || 0,
-    cancelled: data?.subscriptions.filter(s => s.status === 'cancelled').length || 0,
+    cancelled: data?.subscriptions.filter(s => s.status === 'cancelled' || s.isCancelled).length || 0,
     revenue: data?.subscriptions
       .filter(s => s.status === 'active')
-      .reduce((sum, s) => sum + (s.plan.price || 0), 0) || 0
+      .reduce((sum, s) => sum + (s.plan.price || 0), 0) || 0,
+    totalRenewals: data?.subscriptions.reduce((sum, s) => sum + (s.renewalCount || 0), 0) || 0
   };
 
   if (loading) {
@@ -269,7 +273,7 @@ export default function SubscriptionsPage() {
         </div>
 
         {/* Beautiful Stats Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
           {/* Total */}
           <div className="group relative overflow-hidden bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/30 rounded-2xl p-5 border border-violet-200/50 dark:border-violet-800/50 shadow-lg hover:shadow-xl transition-all duration-300">
             <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-violet-400/20 to-purple-400/20 rounded-full blur-2xl"></div>
@@ -359,6 +363,25 @@ export default function SubscriptionsPage() {
               <p className="text-xs text-amber-600/70 dark:text-amber-400/70 font-semibold mt-1">Monthly Revenue</p>
             </div>
           </div>
+
+          {/* Renewals */}
+          <div className="group relative overflow-hidden bg-gradient-to-br from-blue-50 via-indigo-50 to-blue-50 dark:from-blue-950/30 dark:via-indigo-950/30 dark:to-blue-950/30 rounded-2xl p-5 border border-blue-200/50 dark:border-blue-800/50 shadow-lg hover:shadow-xl transition-all duration-300">
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-400/10 to-indigo-400/10"></div>
+            <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-blue-400/20 to-indigo-400/20 rounded-full blur-2xl"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl shadow-lg shadow-blue-500/30">
+                  <TrendingUp className="w-5 h-5 text-white" />
+                </div>
+                <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                  <Zap className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                  <span className="text-xs font-bold text-blue-700 dark:text-blue-300">RENEW</span>
+                </span>
+              </div>
+              <p className="text-3xl font-black text-blue-700 dark:text-blue-300">{stats.totalRenewals}</p>
+              <p className="text-xs text-blue-600/70 dark:text-blue-400/70 font-semibold mt-1">Total Renewals</p>
+            </div>
+          </div>
         </div>
 
         {error && (
@@ -412,12 +435,13 @@ export default function SubscriptionsPage() {
         ) : (
           <div className="space-y-2">
             {/* Header Row */}
-            <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-2 bg-white/50 dark:bg-slate-800/50 rounded-xl border border-slate-200/50 dark:border-slate-700/50">
+            <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-2 bg-white/50 dark:bg-slate-800/50 rounded-xl border border-slate-200/50 dark:border-slate-700/50">
               <div className="col-span-3 text-xs font-semibold text-slate-500 dark:text-slate-400">USER</div>
               <div className="col-span-2 text-xs font-semibold text-slate-500 dark:text-slate-400">PLAN</div>
               <div className="col-span-2 text-xs font-semibold text-slate-500 dark:text-slate-400">STATUS</div>
               <div className="col-span-2 text-xs font-semibold text-slate-500 dark:text-slate-400">END DATE</div>
-              <div className="col-span-2 text-xs font-semibold text-slate-500 dark:text-slate-400">DAYS</div>
+              <div className="col-span-1 text-xs font-semibold text-slate-500 dark:text-slate-400">DAYS</div>
+              <div className="col-span-1 text-xs font-semibold text-slate-500 dark:text-slate-400">RENEWALS</div>
               <div className="col-span-1"></div>
             </div>
 
@@ -486,14 +510,47 @@ export default function SubscriptionsPage() {
                         )}
                       </div>
 
+                      {/* Renewal Count */}
+                      <div className="hidden lg:block min-w-[60px]">
+                        {(sub.renewalCount || 0) > 0 ? (
+                          <span className="inline-flex items-center gap-1 text-sm font-bold text-violet-600 dark:text-violet-400">
+                            <TrendingUp className="w-3 h-3" />
+                            {sub.renewalCount}
+                            <span className="text-xs font-normal text-slate-400">renewal{(sub.renewalCount || 0) > 1 ? 's' : ''}</span>
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-400">New</span>
+                        )}
+                      </div>
+
+                      {/* Cancelled Badge */}
+                      {sub.isCancelled && (
+                        <div className="hidden sm:block">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                            <XCircle className="w-3 h-3 mr-1" />
+                            Cancelled
+                          </span>
+                        </div>
+                      )}
+
                       {/* Mobile Only Info */}
                       <div className="sm:hidden flex items-center gap-3 flex-1 justify-end">
                         <div className="text-right">
                           <p className="text-xs text-slate-500">{sub.plan.name}</p>
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border} border`}>
-                            <span className={`w-1 h-1 rounded-full ${statusConfig.dot} mr-1`}></span>
-                            {statusConfig.label}
-                          </span>
+                          <div className="flex items-center gap-1">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border} border`}>
+                              <span className={`w-1 h-1 rounded-full ${statusConfig.dot} mr-1`}></span>
+                              {statusConfig.label}
+                            </span>
+                            {(sub.renewalCount || 0) > 0 && (
+                              <span className="text-xs font-bold text-violet-600 dark:text-violet-400">
+                                {sub.renewalCount}R
+                              </span>
+                            )}
+                            {sub.isCancelled && (
+                              <XCircle className="w-3 h-3 text-slate-400" />
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -530,6 +587,28 @@ export default function SubscriptionsPage() {
                             <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Duration</p>
                             <p className="font-semibold text-slate-700 dark:text-slate-300">{sub.plan.durationDays ? `${sub.plan.durationDays} days` : 'N/A'}</p>
                           </div>
+                          {/* Renewal Count */}
+                          <div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
+                              <TrendingUp className="w-3 h-3" />
+                              Renewals
+                            </p>
+                            <p className="font-semibold text-violet-600 dark:text-violet-400">
+                              {sub.renewalCount || 0} time{(sub.renewalCount || 0) !== 1 ? 's' : ''}
+                            </p>
+                          </div>
+                          {/* Cancellation Info */}
+                          {sub.isCancelled && (
+                            <div>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
+                                <XCircle className="w-3 h-3" />
+                                Cancelled
+                              </p>
+                              <p className="font-semibold text-slate-600 dark:text-slate-400">
+                                {sub.cancelledAt ? formatDate(sub.cancelledAt) : 'Yes'}
+                              </p>
+                            </div>
+                          )}
                           {sub.user.trialEndDate && (
                             <div className="col-span-2">
                               <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Trial Ends</p>
