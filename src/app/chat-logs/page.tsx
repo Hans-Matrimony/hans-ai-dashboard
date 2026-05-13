@@ -48,12 +48,22 @@ interface UserDoc {
     totalSessions: number;
 }
 
+interface Subscription {
+    userId: string;
+    status: 'active' | 'expired' | 'cancelled' | 'trial' | 'pending';
+}
+
 interface ApiResponse {
     count: number;
     users: UserDoc[];
 }
 
 /* ──────── Helpers ──────── */
+// Normalize phone number for matching (remove +, spaces, dashes)
+function normalizePhoneNumber(phone: string): string {
+    return phone.replace(/[\+\s\-()]/g, '');
+}
+
 function fmtTime(iso: string) {
     try {
         const d = new Date(iso);
@@ -124,6 +134,21 @@ function getDeliveryStatusBadge(metadata?: Message['metadata']) {
         return (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-50 text-red-700 border border-red-200" title={metadata.error}>
                 ✗ Failed: {metadata.error || 'Unknown error'}
+            </span>
+        );
+    }
+
+    return null;
+}
+
+// Paid/Unpaid badge component
+function getPaidUnpaidBadge(subscriptionStatus?: 'active' | 'expired' | 'cancelled' | 'trial' | 'pending') {
+    if (!subscriptionStatus) return null;
+
+    if (subscriptionStatus === 'active') {
+        return (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border bg-emerald-50 text-emerald-700 border-emerald-200">
+                💎 Paid
             </span>
         );
     }
@@ -238,6 +263,41 @@ function ChatLogsContent() {
     const [calculatingFriendship, setCalculatingFriendship] = useState(false);
     const [friendshipProgress, setFriendshipProgress] = useState<{current: number; total: number; userId: string} | null>(null);
 
+    // subscriptions state for paid/unpaid tags
+    const [subscriptions, setSubscriptions] = useState<Map<string, 'active' | 'expired' | 'cancelled' | 'trial' | 'pending'>>(new Map());
+    const [subscriptionsNormalized, setSubscriptionsNormalized] = useState<Map<string, 'active' | 'expired' | 'cancelled' | 'trial' | 'pending'>>(new Map());
+    const [loadingSubscriptions, setLoadingSubscriptions] = useState(false);
+    const [subscriptionsError, setSubscriptionsError] = useState<string | null>(null);
+    const subscriptionsFetchInProgress = useRef(false);
+
+    // Helper to get subscription status with phone number normalization
+    const getSubscriptionStatus = useCallback((userId: string) => {
+        if (!userId) return undefined;
+
+        // Try exact match first
+        let status = subscriptions.get(userId);
+        if (status) return status;
+
+        // Try normalized match (for phone numbers)
+        const normalized = normalizePhoneNumber(userId);
+        status = subscriptionsNormalized.get(normalized);
+        if (status) return status;
+
+        // Try with common prefixes (country code removal)
+        if (normalized.startsWith('91') && normalized.length > 10) {
+            status = subscriptionsNormalized.get(normalized.substring(2));
+            if (status) return status;
+        }
+
+        // Try adding country code if it might be missing
+        if (normalized.length === 10 && !normalized.startsWith('91')) {
+            status = subscriptionsNormalized.get('91' + normalized);
+            if (status) return status;
+        }
+
+        return undefined;
+    }, [subscriptions, subscriptionsNormalized]);
+
     // Toggle fullscreen with URL sync
     const toggleFullscreen = useCallback(() => {
         const next = !isFullscreen;
@@ -252,6 +312,77 @@ function ChatLogsContent() {
         }
         window.history.pushState({}, '', url.toString());
     }, [isFullscreen]);
+
+    // Fetch subscriptions for paid/unpaid status
+    const fetchSubscriptions = useCallback(async () => {
+        // Prevent concurrent fetches
+        if (subscriptionsFetchInProgress.current) {
+            console.log('[Subscriptions] Fetch already in progress, skipping');
+            return;
+        }
+
+        subscriptionsFetchInProgress.current = true;
+        setLoadingSubscriptions(true);
+        setSubscriptionsError(null);
+
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+            const response = await fetch('/api/subscriptions?limit=1000', {
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+
+            // Validate response structure
+            if (!data || typeof data !== 'object') {
+                throw new Error('Invalid response format');
+            }
+
+            const subsMap = new Map<string, 'active' | 'expired' | 'cancelled' | 'trial' | 'pending'>();
+            const subsNormalizedMap = new Map<string, 'active' | 'expired' | 'cancelled' | 'trial' | 'pending'>();
+
+            // Safely iterate over subscriptions
+            const subscriptionsArray = Array.isArray(data.subscriptions) ? data.subscriptions : [];
+
+            for (const sub of subscriptionsArray) {
+                if (!sub || typeof sub !== 'object') continue;
+
+                // Handle both direct userId and nested user.userId
+                const userId = sub.userId || sub.user?.userId;
+                const status = sub.status?.toLowerCase()?.trim();
+
+                // Validate status
+                const validStatuses = ['active', 'expired', 'cancelled', 'trial', 'pending'];
+                if (userId && status && validStatuses.includes(status)) {
+                    const statusTyped = status as 'active' | 'expired' | 'cancelled' | 'trial' | 'pending';
+                    // Store exact match
+                    subsMap.set(String(userId), statusTyped);
+                    // Store normalized for phone number matching
+                    subsNormalizedMap.set(normalizePhoneNumber(String(userId)), statusTyped);
+                }
+            }
+
+            console.log('[Subscriptions] Loaded:', subsMap.size, 'subscriptions');
+            setSubscriptions(subsMap);
+            setSubscriptionsNormalized(subsNormalizedMap);
+
+        } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            console.error('[Subscriptions] Fetch failed:', errorMsg);
+            setSubscriptionsError(errorMsg);
+            // Don't clear existing subscriptions on error - keep stale data
+        } finally {
+            setLoadingSubscriptions(false);
+            subscriptionsFetchInProgress.current = false;
+        }
+    }, []);
 
     // Re-fetch helper
     const refetchData = useCallback((showLoading = true) => {
@@ -444,12 +575,28 @@ function ChatLogsContent() {
     // fetch data
     useEffect(() => {
         refetchData();
-        // Auto-refresh every 30 seconds
+        fetchSubscriptions(); // Fetch subscriptions for paid/unpaid tags
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [startDate, endDate]); // Only re-run when date filters change
+
+    // Separate effect for auto-refresh to avoid dependency issues
+    useEffect(() => {
+        // Auto-refresh chat logs every 15 seconds
         const interval = setInterval(() => {
-            refetchData(false); // background refresh
+            refetchData(false); // background refresh for chat logs
         }, 15000);
-        return () => clearInterval(interval);
-    }, [startDate, endDate, refetchData]);
+
+        // Refresh subscriptions every 5 minutes (less frequent as they change less often)
+        const subscriptionsInterval = setInterval(() => {
+            fetchSubscriptions();
+        }, 300000);
+
+        return () => {
+            clearInterval(interval);
+            clearInterval(subscriptionsInterval);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Run once on mount, intervals handle refreshes
 
     // Sync fullscreen state with URL on mount
     useEffect(() => {
@@ -515,6 +662,14 @@ useEffect(() => {
         return Array.from(set);
     }, [data]);
 
+    // Calculate paid/unpaid counts
+    const paidUnpaidStats = useMemo(() => {
+        if (!data) return { paid: 0, unpaid: 0 };
+        const paid = data.users.filter(u => getSubscriptionStatus(u.userId) === 'active').length;
+        const unpaid = data.users.length - paid;
+        return { paid, unpaid };
+    }, [data, getSubscriptionStatus]);
+
     // filtered users (sorted by most recent activity)
     const filteredUsers = useMemo(() => {
         if (!data) return [];
@@ -552,7 +707,7 @@ useEffect(() => {
         });
 
         return users;
-    }, [data, search, channelFilter, timeFilter]);
+    }, [data, search, channelFilter, timeFilter, subscriptions]);
 
     // total messages for a user
     function totalMessages(u: UserDoc) {
@@ -753,6 +908,14 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                                                 </span>
                                                 <span className="mx-2">·</span>
                                                 <span>{data.count} total users</span>
+                                                <span className="mx-2">·</span>
+                                                <span className="inline-flex items-center gap-1 text-emerald-600">
+                                                    💎 {paidUnpaidStats.paid} paid
+                                                </span>
+                                                <span className="mx-2">·</span>
+                                                <span className="inline-flex items-center gap-1 text-slate-500">
+                                                    🆓 {paidUnpaidStats.unpaid} free
+                                                </span>
                                                 <span className="mx-2">·</span>
                                                 <span>{data.users.reduce((a, u) => a + totalMessages(u), 0)} messages</span>
                                             </>
@@ -966,7 +1129,7 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                 {!isFullscreen && showAnalytics && analytics && !loading && !error && (
                     <div className="shrink-0 px-4 md:px-6 pb-4 max-h-[30vh] md:max-h-[35vh] overflow-y-auto custom-scrollbar border-b border-slate-100 mb-2">
                         {/* Stats Cards */}
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-3">
                             {/* Active Users (NEW) */}
                             <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl p-3 text-white shadow-sm relative overflow-hidden">
                                 <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full -mr-8 -mt-8"></div>
@@ -985,6 +1148,28 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                                     <span className="text-[10px] font-semibold text-indigo-100 uppercase tracking-tight">Total Users</span>
                                 </div>
                                 <p className="text-xl font-bold">{analytics.totalUsers}</p>
+                            </div>
+
+                            {/* Paid Users */}
+                            <div className="bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl p-3 text-white shadow-sm relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full -mr-8 -mt-8"></div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-base relative">💎</span>
+                                    <span className="text-[10px] font-semibold text-violet-100 uppercase tracking-tight">Paid Users</span>
+                                </div>
+                                <p className="text-xl font-bold">{paidUnpaidStats.paid}</p>
+                                <p className="text-[9px] text-violet-100 mt-0.5">Active subscribers</p>
+                            </div>
+
+                            {/* Free Users */}
+                            <div className="bg-gradient-to-br from-slate-400 to-slate-500 rounded-xl p-3 text-white shadow-sm relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full -mr-8 -mt-8"></div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-base relative">🆓</span>
+                                    <span className="text-[10px] font-semibold text-slate-100 uppercase tracking-tight">Free Users</span>
+                                </div>
+                                <p className="text-xl font-bold">{paidUnpaidStats.unpaid}</p>
+                                <p className="text-[9px] text-slate-100 mt-0.5">Unpaid</p>
                             </div>
 
                             {/* Total Sessions */}
@@ -1176,6 +1361,7 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                                 filteredUsers.map(user => {
                                     const active = isUserActive(user);
                                     const friendshipScore = friendshipScores.get(user.userId);
+                                    const subscriptionStatus = getSubscriptionStatus(user.userId);
                                     return (
                                         <button
                                             key={user._id}
@@ -1202,6 +1388,7 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                                                             </div>
                                                         )}
                                                         <p className="text-sm font-semibold text-slate-800 truncate">{user.userId}</p>
+                                                        {getPaidUnpaidBadge(subscriptionStatus)}
                                                     </div>
                                                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                                                         {/* Channel badge */}
@@ -1262,8 +1449,9 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                                             </svg>
                                         </button>
                                         <div>
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 flex-wrap">
                                                 <h2 className="text-sm font-bold text-slate-800">{selectedUser.userId}</h2>
+                                                {getPaidUnpaidBadge(getSubscriptionStatus(selectedUser.userId))}
                                                 {/* Friendship Score Badge (Inline) */}
                                                 {(() => {
                                                     const friendshipScore = friendshipScores.get(selectedUser.userId);
