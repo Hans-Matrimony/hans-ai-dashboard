@@ -200,6 +200,7 @@ function ChatLogsContent() {
     const [search, setSearch] = useState('');
     const [channelFilter, setChannelFilter] = useState<string>('all');
     const [timeFilter, setTimeFilter] = useState<string>('all');
+    const [subscriptionFilter, setSubscriptionFilter] = useState<'all' | 'paid' | 'free'>('all');
     const [startDate, setStartDate] = useState<string>('');
     const [endDate, setEndDate] = useState<string>('');
 
@@ -687,6 +688,16 @@ useEffect(() => {
             );
         }
 
+        // subscription filter (paid/free)
+        if (subscriptionFilter !== 'all') {
+            users = users.filter(u => {
+                const status = getSubscriptionStatus(u.userId);
+                if (subscriptionFilter === 'paid') return status === 'active';
+                if (subscriptionFilter === 'free') return status !== 'active';
+                return true;
+            });
+        }
+
         // search filter
         if (search.trim()) {
             const q = search.toLowerCase().trim();
@@ -707,7 +718,15 @@ useEffect(() => {
         });
 
         return users;
-    }, [data, search, channelFilter, timeFilter, subscriptions]);
+    }, [data, search, channelFilter, timeFilter, subscriptionFilter, getSubscriptionStatus]);
+
+    // Calculate filtered paid/unpaid counts (based on current filter)
+    const filteredPaidUnpaidStats = useMemo(() => {
+        if (!data) return { paid: 0, unpaid: 0 };
+        const paid = filteredUsers.filter(u => getSubscriptionStatus(u.userId) === 'active').length;
+        const unpaid = filteredUsers.length - paid;
+        return { paid, unpaid };
+    }, [filteredUsers, getSubscriptionStatus]);
 
     // total messages for a user
     function totalMessages(u: UserDoc) {
@@ -928,12 +947,27 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                                                     </span>
                                                     <span className="font-semibold text-indigo-600">
                                                         {filteredUsers.length} users
-                                                        <span className="text-indigo-400 font-normal"> active in </span>
-                                                        <span className="font-bold">{timeFilter}</span>
+                                                        {timeFilter !== 'all' && (
+                                                            <span className="text-indigo-400 font-normal"> active in </span>
+                                                        )}
+                                                        {timeFilter !== 'all' && (
+                                                            <span className="font-bold">{timeFilter}</span>
+                                                        )}
+                                                        {subscriptionFilter !== 'all' && (
+                                                            <span className="text-purple-400 font-normal"> · {subscriptionFilter === 'paid' ? '💎 Paid' : '🆓 Free'}</span>
+                                                        )}
                                                     </span>
                                                 </span>
                                                 <span className="mx-2">·</span>
                                                 <span className="text-slate-400">{data.count} total</span>
+                                                {subscriptionFilter !== 'all' && (
+                                                    <>
+                                                        <span className="mx-2">·</span>
+                                                        <span className={`inline-flex items-center gap-1 ${subscriptionFilter === 'paid' ? 'text-emerald-600' : 'text-slate-500'}`}>
+                                                            {subscriptionFilter === 'paid' ? '💎' : '🆓'} {filteredUsers.length} {subscriptionFilter === 'paid' ? 'paid' : 'free'}
+                                                        </span>
+                                                    </>
+                                                )}
                                             </>
                                         )}
                                     </>
@@ -1063,6 +1097,18 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                                 {channels.map(ch => (
                                     <option key={ch} value={ch}>{ch.charAt(0).toUpperCase() + ch.slice(1)}</option>
                                 ))}
+                            </select>
+
+                            {/* Subscription filter (Paid/Free) */}
+                            <select
+                                id="subscription-filter"
+                                value={subscriptionFilter}
+                                onChange={e => setSubscriptionFilter(e.target.value as 'all' | 'paid' | 'free')}
+                                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 shadow-sm cursor-pointer"
+                            >
+                                <option value="all">💎 All Users</option>
+                                <option value="paid">💎 Paid Only</option>
+                                <option value="free">🆓 Free Only</option>
                             </select>
 
                             {/* Time filter */}
@@ -1356,6 +1402,11 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                             {filteredUsers.length === 0 ? (
                                 <div className="p-8 text-center">
                                     <p className="text-sm text-slate-400">No users found</p>
+                                    {subscriptionFilter !== 'all' && (
+                                        <p className="text-xs text-slate-400 mt-1">
+                                            Try changing the subscription filter
+                                        </p>
+                                    )}
                                 </div>
                             ) : (
                                 filteredUsers.map(user => {
