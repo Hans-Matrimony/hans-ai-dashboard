@@ -1329,7 +1329,7 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                                             {hasScores ? avgScore.toFixed(1) : 'Tap'}/10
                                         </p>
                                         <p className={`text-[9px] mt-0.5 ${hasScores ? 'text-white/80' : 'text-slate-500'}`}>
-                                            {hasScores ? `${scores.length} scored` : 'Latest 3 users'}
+                                            {hasScores ? `${scores.length} scored` : 'Latest 10 users'}
                                         </p>
                                         {hasScores && (
                                             <div className="mt-1.5 flex gap-1">
