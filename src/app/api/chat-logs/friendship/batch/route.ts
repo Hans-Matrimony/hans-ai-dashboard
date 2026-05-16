@@ -15,14 +15,14 @@ const MONGO_LOGGER_URL = process.env.NEXT_PUBLIC_MONGO_LOGGER_URL || 'https://tk
  * POST /api/chat-logs/friendship/batch
  * Calculate friendship scores for all users
  * Query params:
- *   - limit: maximum number of users to analyze (default: 50)
+ *   - limit: maximum number of users to analyze (default: 3)
  *   - channel: filter by channel (optional)
  *   - force: re-analyze even if recently analyzed (optional)
  */
 export async function POST(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const limit = parseInt(searchParams.get('limit') || '50', 10);
+    const limit = parseInt(searchParams.get('limit') || '3', 10);
     const channel = searchParams.get('channel');
     const force = searchParams.get('force') === 'true';
 

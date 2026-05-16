@@ -264,6 +264,14 @@ function ChatLogsContent() {
     const [calculatingFriendship, setCalculatingFriendship] = useState(false);
     const [friendshipProgress, setFriendshipProgress] = useState<{current: number; total: number; userId: string} | null>(null);
 
+    // Auto-analysis state (real-time with DeepSeek)
+    const [autoAnalysisRunning, setAutoAnalysisRunning] = useState(false);
+    const [autoAnalysisProgress, setAutoAnalysisProgress] = useState<{analyzed: number; total: number} | null>(null);
+    const autoAnalysisTriggered = useRef(false);
+
+    // Friendship detail dialog state
+    const [showFriendshipDialog, setShowFriendshipDialog] = useState(false);
+
     // subscriptions state for paid/unpaid tags
     const [subscriptions, setSubscriptions] = useState<Map<string, 'active' | 'expired' | 'cancelled' | 'trial' | 'pending'>>(new Map());
     const [subscriptionsNormalized, setSubscriptionsNormalized] = useState<Map<string, 'active' | 'expired' | 'cancelled' | 'trial' | 'pending'>>(new Map());
@@ -459,17 +467,23 @@ function ChatLogsContent() {
         setDeleting(false);
     };
 
-    // Calculate friendship scores for all users
+    // Calculate friendship scores for latest 10 users (most recent activity)
     const handleCalculateFriendshipScores = async () => {
         if (!data || calculatingFriendship) return;
 
-        const userCount = filteredUsers.length;
+        // Limit to 3 most recent users for quick analysis
+        const MAX_USERS_TO_ANALYZE = 3;
+        const usersToAnalyze = filteredUsers.slice(0, MAX_USERS_TO_ANALYZE);
+        const userCount = usersToAnalyze.length;
+
         if (userCount === 0) {
             alert('No users to analyze');
             return;
         }
 
-        if (!window.confirm(`Calculate friendship scores for ${userCount} users?\n\nThis will take approximately ${Math.ceil(userCount / 2)} seconds.`)) {
+        const estimatedTime = Math.ceil((userCount * 5) / 60); // ~5 seconds per user with rate limiting
+        const timeText = estimatedTime < 1 ? '< 1 minute' : `~${estimatedTime} minute${estimatedTime > 1 ? 's' : ''}`;
+        if (!window.confirm(`Calculate friendship scores for the ${userCount} most recent users?\n\nThis will take approximately ${timeText}.`)) {
             return;
         }
 
@@ -598,6 +612,56 @@ function ChatLogsContent() {
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // Run once on mount, intervals handle refreshes
+
+    // Auto-trigger friendship analysis when data loads (real-time with DeepSeek)
+    useEffect(() => {
+        if (!data || data.users.length === 0) return;
+        if (autoAnalysisTriggered.current) return; // Only trigger once per page load
+        if (friendshipScores.size > 0) return; // Already have scores
+        if (calculatingFriendship || autoAnalysisRunning) return; // Already running
+
+        autoAnalysisTriggered.current = true;
+
+        const runAutoAnalysis = async () => {
+            setAutoAnalysisRunning(true);
+            try {
+                console.log('[Auto Analysis] Starting real-time friendship analysis with DeepSeek...');
+                const skipIds = Array.from(friendshipScores.keys());
+                const params = new URLSearchParams();
+                params.append('limit', '10');
+                if (skipIds.length > 0) {
+                    params.append('skip', skipIds.join(','));
+                }
+
+                const response = await fetch(`/api/chat-logs/friendship/auto?${params.toString()}`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.results && result.results.length > 0) {
+                        const newScores = new Map(friendshipScores);
+                        for (const item of result.results) {
+                            newScores.set(item.userId, item.score);
+                        }
+                        setFriendshipScores(newScores);
+                        setAutoAnalysisProgress({ analyzed: result.analyzed, total: result.total });
+                        console.log(`[Auto Analysis] Complete! ${result.analyzed} scores calculated (${result.fromMetadata} from metadata, ${result.fromAI} from AI)`);
+                    }
+                } else {
+                    console.error('[Auto Analysis] Failed:', response.status);
+                }
+            } catch (error) {
+                console.error('[Auto Analysis] Error:', error);
+            } finally {
+                setAutoAnalysisRunning(false);
+            }
+        };
+
+        // Delay slightly to not block initial render
+        const timer = setTimeout(runAutoAnalysis, 2000);
+        return () => clearTimeout(timer);
+    }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Sync fullscreen state with URL on mount
     useEffect(() => {
@@ -901,6 +965,7 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
 
     /* ──────── Render ──────── */
     return (
+        <>
         <div className={`h-screen flex flex-col overflow-x-auto overflow-y-hidden ${isFullscreen ? 'bg-slate-900' : ''}`}>
             <div 
                 ref={topSectionRef}
@@ -1175,7 +1240,7 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                 {!isFullscreen && showAnalytics && analytics && !loading && !error && (
                     <div className="shrink-0 px-4 md:px-6 pb-4 max-h-[30vh] md:max-h-[35vh] overflow-y-auto custom-scrollbar border-b border-slate-100 mb-2">
                         {/* Stats Cards */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-3">
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 mb-3">
                             {/* Active Users (NEW) */}
                             <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl p-3 text-white shadow-sm relative overflow-hidden">
                                 <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full -mr-8 -mt-8"></div>
@@ -1217,6 +1282,96 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                                 <p className="text-xl font-bold">{paidUnpaidStats.unpaid}</p>
                                 <p className="text-[9px] text-slate-100 mt-0.5">Unpaid</p>
                             </div>
+
+                            {/* Friendship Score */}
+                            {(() => {
+                                const scores = Array.from(friendshipScores.values());
+                                const avgScore = scores.length > 0
+                                    ? scores.reduce((sum, s) => sum + s.overall, 0) / scores.length
+                                    : 0;
+                                const highScores = scores.filter(s => s.overall >= 7).length;
+                                const mediumScores = scores.filter(s => s.overall >= 5 && s.overall < 7).length;
+                                const lowScores = scores.filter(s => s.overall < 5).length;
+
+                                // Get common improvements
+                                const allImprovements = scores.flatMap(s => s.improvements || []);
+                                const improvementCounts = allImprovements.reduce((acc, imp) => {
+                                    acc[imp] = (acc[imp] || 0) + 1;
+                                    return acc;
+                                }, {} as Record<string, number>);
+                                const topImprovements = Object.entries(improvementCounts)
+                                    .sort((a, b) => b[1] - a[1])
+                                    .slice(0, 2)
+                                    .map(([imp]) => imp);
+
+                                const hasScores = scores.length > 0;
+
+                                return (
+                                    <div className={`rounded-xl p-3 shadow-sm relative overflow-hidden cursor-pointer transition-all hover:scale-105 ${
+                                        hasScores
+                                            ? (avgScore >= 7 ? 'bg-gradient-to-br from-pink-500 to-rose-600 text-white' :
+                                               avgScore >= 5 ? 'bg-gradient-to-br from-amber-500 to-orange-600 text-white' :
+                                               'bg-gradient-to-br from-red-500 to-rose-700 text-white')
+                                            : 'bg-gradient-to-br from-slate-100 to-slate-200 text-slate-600 border border-slate-300'
+                                    }`} onClick={() => {
+                                        if (!hasScores) {
+                                            handleCalculateFriendshipScores();
+                                        } else {
+                                            setShowFriendshipDialog(true);
+                                        }
+                                    }}>
+                                        <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full -mr-8 -mt-8"></div>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="text-base relative">🤝</span>
+                                            <span className={`text-[10px] font-semibold uppercase tracking-tight ${hasScores ? 'text-white/90' : 'text-slate-600'}`}>Friendship</span>
+                                        </div>
+                                        <p className={`text-xl font-bold ${hasScores ? '' : 'text-slate-700'}`}>
+                                            {hasScores ? avgScore.toFixed(1) : 'Tap'}/10
+                                        </p>
+                                        <p className={`text-[9px] mt-0.5 ${hasScores ? 'text-white/80' : 'text-slate-500'}`}>
+                                            {hasScores ? `${scores.length} scored` : 'Latest 3 users'}
+                                        </p>
+                                        {hasScores && (
+                                            <div className="mt-1.5 flex gap-1">
+                                                <span className="text-[8px] px-1 rounded bg-emerald-500/50">{highScores}🟢</span>
+                                                <span className="text-[8px] px-1 rounded bg-amber-500/50">{mediumScores}🟡</span>
+                                                <span className="text-[8px] px-1 rounded bg-red-500/50">{lowScores}🔴</span>
+                                            </div>
+                                        )}
+                                        {!hasScores && !autoAnalysisRunning && (
+                                            <div className="mt-1.5 text-[8px] font-medium text-pink-600 flex items-center gap-1">
+                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                                </svg>
+                                                Analyze latest 10
+                                            </div>
+                                        )}
+                                        {autoAnalysisRunning && !hasScores && (
+                                            <div className="mt-1.5 flex items-center gap-1.5">
+                                                <span className="relative flex h-2 w-2">
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                                                </span>
+                                                <span className="text-[8px] text-slate-500 font-medium">DeepSeek analyzing...</span>
+                                            </div>
+                                        )}
+                                        {hasScores && (
+                                            <div className="mt-1 text-[7px] text-white/70 flex items-center gap-1">
+                                                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                </svg>
+                                                Click for details
+                                            </div>
+                                        )}
+                                        {hasScores && topImprovements.length > 0 && (
+                                            <div className="mt-1.5 text-[7px] text-white/90 leading-tight">
+                                                💡 {topImprovements[0]}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
 
                             {/* Total Sessions */}
                             <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-3 text-white shadow-sm">
@@ -1271,8 +1426,8 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                             </div>
                         </div>
 
-                        {/* Bottom row: Top Users + Common Topics + Time Activity */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {/* Bottom row: Top Users + Common Topics + Friendship Insights + Time Activity */}
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                             {/* Top Active Users */}
                             <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
                                 <div className="flex items-center gap-2 mb-2">
@@ -1310,6 +1465,93 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                                         <p className="text-[10px] text-slate-400">No data</p>
                                     )}
                                 </div>
+                            </div>
+
+                            {/* Friendship Insights */}
+                            <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-tight">🤝 Friendship Issues</span>
+                                    {!calculatingFriendship && friendshipScores.size === 0 && (
+                                        <button
+                                            onClick={handleCalculateFriendshipScores}
+                                            className="text-[9px] font-medium text-pink-600 hover:text-pink-700 flex items-center gap-1"
+                                        >
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                            </svg>
+                                            Calculate
+                                        </button>
+                                    )}
+                                </div>
+                                {friendshipScores.size > 0 ? (() => {
+                                    const scores = Array.from(friendshipScores.values());
+                                    const allImprovements = scores.flatMap(s => s.improvements || []);
+                                    const improvementCounts = allImprovements.reduce((acc, imp) => {
+                                        acc[imp] = (acc[imp] || 0) + 1;
+                                        return acc;
+                                    }, {} as Record<string, number>);
+                                    const topImprovements = Object.entries(improvementCounts)
+                                        .sort((a, b) => b[1] - a[1])
+                                        .slice(0, 4);
+
+                                    // Also show top strengths
+                                    const allStrengths = scores.flatMap(s => s.strengths || []);
+                                    const strengthCounts = allStrengths.reduce((acc, str) => {
+                                        acc[str] = (acc[str] || 0) + 1;
+                                        return acc;
+                                    }, {} as Record<string, number>);
+                                    const topStrengths = Object.entries(strengthCounts)
+                                        .sort((a, b) => b[1] - a[1])
+                                        .slice(0, 2);
+
+                                    return (
+                                        <div className="space-y-2">
+                                            {topImprovements.length > 0 && (
+                                                <div>
+                                                    <p className="text-[9px] font-semibold text-amber-700 mb-1">💡 Common Issues</p>
+                                                    <div className="space-y-1">
+                                                        {topImprovements.map(([issue, count], i) => (
+                                                            <div key={i} className="flex items-center gap-1 text-[9px]">
+                                                                <span className="text-amber-500">⚠️</span>
+                                                                <span className="text-slate-600 truncate flex-1" title={issue}>{issue}</span>
+                                                                <span className="text-slate-400 font-medium">×{count}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {topStrengths.length > 0 && (
+                                                <div className="pt-1.5 border-t border-slate-100">
+                                                    <p className="text-[9px] font-semibold text-emerald-700 mb-1">✓ Strengths</p>
+                                                    <div className="space-y-1">
+                                                        {topStrengths.map(([strength, count], i) => (
+                                                            <div key={i} className="flex items-center gap-1 text-[9px]">
+                                                                <span className="text-emerald-500">✓</span>
+                                                                <span className="text-slate-600 truncate flex-1" title={strength}>{strength}</span>
+                                                                <span className="text-slate-400 font-medium">×{count}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })() : calculatingFriendship ? (
+                                    <div className="text-center py-2">
+                                        <div className="flex items-center justify-center gap-2">
+                                            <svg className="animate-spin h-3 w-3 text-pink-500" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                            </svg>
+                                            <p className="text-[10px] text-slate-500">Analyzing conversations...</p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-3">
+                                        <p className="text-[10px] text-slate-400 mb-1">No scores calculated yet</p>
+                                        <p className="text-[9px] text-slate-300">Click "Calculate" to analyze latest 10 users' friendship quality</p>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Activity by Time Period */}
@@ -1835,6 +2077,239 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                 </div>
             )}
         </div>
+
+        {/* ═══ Friendship Detail Dialog ═══ */}
+        {showFriendshipDialog && (() => {
+            const scores = Array.from(friendshipScores.entries());
+            const allScoreValues = scores.map(([, s]) => s.overall);
+            const avgScore = allScoreValues.length > 0 ? allScoreValues.reduce((a, b) => a + b, 0) / allScoreValues.length : 0;
+            const highCount = allScoreValues.filter(s => s >= 7).length;
+            const medCount = allScoreValues.filter(s => s >= 5 && s < 7).length;
+            const lowCount = allScoreValues.filter(s => s < 5).length;
+
+            // Aggregate all improvements and strengths across users
+            const allImprovements: Record<string, number> = {};
+            const allStrengths: Record<string, number> = {};
+            scores.forEach(([, s]) => {
+                (s.improvements || []).forEach(imp => {
+                    const key = imp.substring(0, 120);
+                    allImprovements[key] = (allImprovements[key] || 0) + 1;
+                });
+                (s.strengths || []).forEach(str => {
+                    const key = str.substring(0, 120);
+                    allStrengths[key] = (allStrengths[key] || 0) + 1;
+                });
+            });
+            const topImprovements = Object.entries(allImprovements).sort((a, b) => b[1] - a[1]).slice(0, 8);
+            const topStrengths = Object.entries(allStrengths).sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+            // Sort users by score ascending (worst first)
+            const sortedScores = [...scores].sort((a, b) => a[1].overall - b[1].overall);
+
+            // Average sub-scores
+            const avgEmpathy = scores.length > 0 ? scores.reduce((s, [, v]) => s + v.empathy, 0) / scores.length : 0;
+            const avgWarmth = scores.length > 0 ? scores.reduce((s, [, v]) => s + v.warmth, 0) / scores.length : 0;
+            const avgPersonal = scores.length > 0 ? scores.reduce((s, [, v]) => s + v.personalization, 0) / scores.length : 0;
+            const avgListening = scores.length > 0 ? scores.reduce((s, [, v]) => s + v.supportive_listening, 0) / scores.length : 0;
+            const avgRapport = scores.length > 0 ? scores.reduce((s, [, v]) => s + v.rapport, 0) / scores.length : 0;
+
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowFriendshipDialog(false); }}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
+                        {/* Dialog Header */}
+                        <div className="bg-gradient-to-r from-pink-500 via-rose-500 to-orange-500 px-6 py-4 flex items-center justify-between shrink-0">
+                            <div>
+                                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                    🤝 Friendship Score Analysis
+                                </h2>
+                                <p className="text-sm text-white/80 mt-0.5">
+                                    {scores.length} users analyzed • Powered by DeepSeek V4 Flash
+                                </p>
+                            </div>
+                            <button onClick={() => setShowFriendshipDialog(false)} className="p-2 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        {/* Dialog Body */}
+                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+
+                            {/* Summary Stats Row */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div className="bg-gradient-to-br from-pink-50 to-rose-50 border border-pink-200 rounded-xl p-4 text-center">
+                                    <p className="text-3xl font-black text-pink-600">{avgScore.toFixed(1)}</p>
+                                    <p className="text-xs text-pink-500 font-medium mt-1">Average Score /10</p>
+                                </div>
+                                <div className="bg-gradient-to-br from-emerald-50 to-green-50 border border-emerald-200 rounded-xl p-4 text-center">
+                                    <p className="text-3xl font-black text-emerald-600">{highCount}</p>
+                                    <p className="text-xs text-emerald-500 font-medium mt-1">🟢 Excellent (≥7)</p>
+                                </div>
+                                <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-4 text-center">
+                                    <p className="text-3xl font-black text-amber-600">{medCount}</p>
+                                    <p className="text-xs text-amber-500 font-medium mt-1">🟡 Good (5-6.9)</p>
+                                </div>
+                                <div className="bg-gradient-to-br from-red-50 to-rose-50 border border-red-200 rounded-xl p-4 text-center">
+                                    <p className="text-3xl font-black text-red-600">{lowCount}</p>
+                                    <p className="text-xs text-red-500 font-medium mt-1">🔴 Needs Work (&lt;5)</p>
+                                </div>
+                            </div>
+
+                            {/* Sub-Score Breakdown */}
+                            <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                                <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">📊 Average Sub-Scores</h3>
+                                <div className="grid grid-cols-5 gap-3">
+                                    {[
+                                        { label: 'Empathy', value: avgEmpathy, emoji: '💗' },
+                                        { label: 'Warmth', value: avgWarmth, emoji: '🔥' },
+                                        { label: 'Personal', value: avgPersonal, emoji: '🎯' },
+                                        { label: 'Listening', value: avgListening, emoji: '👂' },
+                                        { label: 'Rapport', value: avgRapport, emoji: '🤝' },
+                                    ].map((metric) => (
+                                        <div key={metric.label} className="text-center">
+                                            <div className="relative w-full bg-slate-200 rounded-full h-2 mb-2">
+                                                <div className={`h-2 rounded-full transition-all duration-500 ${
+                                                    metric.value >= 7 ? 'bg-emerald-500' : metric.value >= 5 ? 'bg-amber-500' : 'bg-red-500'
+                                                }`} style={{ width: `${(metric.value / 10) * 100}%` }}></div>
+                                            </div>
+                                            <p className={`text-lg font-bold ${
+                                                metric.value >= 7 ? 'text-emerald-600' : metric.value >= 5 ? 'text-amber-600' : 'text-red-600'
+                                            }`}>{metric.value.toFixed(1)}</p>
+                                            <p className="text-[10px] text-slate-500">{metric.emoji} {metric.label}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Issues & Improvements + Strengths */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {/* Top Issues / Improvements */}
+                                <div className="bg-amber-50 rounded-xl border border-amber-200 p-4">
+                                    <h3 className="text-sm font-bold text-amber-800 mb-3 flex items-center gap-2">
+                                        💡 Top Improvements Needed
+                                        <span className="text-[9px] bg-amber-200 text-amber-700 px-1.5 py-0.5 rounded-full">{topImprovements.length} issues</span>
+                                    </h3>
+                                    {topImprovements.length > 0 ? (
+                                        <ul className="space-y-2">
+                                            {topImprovements.map(([text, count], i) => (
+                                                <li key={i} className="flex items-start gap-2">
+                                                    <span className="shrink-0 w-5 h-5 rounded-full bg-amber-200 text-amber-700 text-[10px] font-bold flex items-center justify-center mt-0.5">{i + 1}</span>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-xs text-amber-900 leading-relaxed">{text}</p>
+                                                        <p className="text-[9px] text-amber-600 mt-0.5">Found in {count} user{count > 1 ? 's' : ''}</p>
+                                                    </div>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <p className="text-xs text-amber-600">No specific improvements detected</p>
+                                    )}
+                                </div>
+
+                                {/* Top Strengths */}
+                                <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-4">
+                                    <h3 className="text-sm font-bold text-emerald-800 mb-3 flex items-center gap-2">
+                                        ✅ Top Strengths
+                                        <span className="text-[9px] bg-emerald-200 text-emerald-700 px-1.5 py-0.5 rounded-full">{topStrengths.length} areas</span>
+                                    </h3>
+                                    {topStrengths.length > 0 ? (
+                                        <ul className="space-y-2">
+                                            {topStrengths.map(([text, count], i) => (
+                                                <li key={i} className="flex items-start gap-2">
+                                                    <span className="shrink-0 w-5 h-5 rounded-full bg-emerald-200 text-emerald-700 text-[10px] font-bold flex items-center justify-center mt-0.5">✓</span>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-xs text-emerald-900 leading-relaxed">{text}</p>
+                                                        <p className="text-[9px] text-emerald-600 mt-0.5">Found in {count} user{count > 1 ? 's' : ''}</p>
+                                                    </div>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <p className="text-xs text-emerald-600">No specific strengths detected</p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Per-User Score Table */}
+                            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                                <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+                                    <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                                        👥 Per-User Breakdown
+                                        <span className="text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full">{sortedScores.length} users</span>
+                                    </h3>
+                                </div>
+                                <div className="max-h-[400px] overflow-y-auto">
+                                    <table className="w-full">
+                                        <thead className="sticky top-0 bg-slate-50">
+                                            <tr className="text-[10px] text-slate-500 uppercase tracking-wider">
+                                                <th className="text-left px-4 py-2 font-semibold">User</th>
+                                                <th className="text-center px-2 py-2 font-semibold">Overall</th>
+                                                <th className="text-center px-2 py-2 font-semibold hidden md:table-cell">💗</th>
+                                                <th className="text-center px-2 py-2 font-semibold hidden md:table-cell">🔥</th>
+                                                <th className="text-center px-2 py-2 font-semibold hidden md:table-cell">🎯</th>
+                                                <th className="text-center px-2 py-2 font-semibold hidden md:table-cell">👂</th>
+                                                <th className="text-center px-2 py-2 font-semibold hidden md:table-cell">🤝</th>
+                                                <th className="text-left px-2 py-2 font-semibold">Key Issue</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {sortedScores.map(([userId, score]) => {
+                                                const colorClass = score.overall >= 7 ? 'text-emerald-600' : score.overall >= 5 ? 'text-amber-600' : 'text-red-600';
+                                                const bgClass = score.overall >= 7 ? 'bg-emerald-50' : score.overall >= 5 ? 'bg-amber-50' : 'bg-red-50';
+                                                return (
+                                                    <tr key={userId} className={`hover:${bgClass} transition-colors cursor-pointer group`} onClick={() => {
+                                                        setShowFriendshipDialog(false);
+                                                        setSelectedUserId(userId);
+                                                    }}>
+                                                        <td className="px-4 py-2.5">
+                                                            <p className="text-xs font-medium text-slate-700 group-hover:text-indigo-600 truncate max-w-[180px]" title={userId}>{userId}</p>
+                                                        </td>
+                                                        <td className="text-center px-2 py-2.5">
+                                                            <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${bgClass} ${colorClass}`}>
+                                                                {score.overall.toFixed(1)}
+                                                            </span>
+                                                        </td>
+                                                        <td className={`text-center px-2 py-2.5 text-xs font-medium hidden md:table-cell ${score.empathy >= 7 ? 'text-emerald-600' : score.empathy >= 5 ? 'text-amber-600' : 'text-red-600'}`}>{score.empathy}</td>
+                                                        <td className={`text-center px-2 py-2.5 text-xs font-medium hidden md:table-cell ${score.warmth >= 7 ? 'text-emerald-600' : score.warmth >= 5 ? 'text-amber-600' : 'text-red-600'}`}>{score.warmth}</td>
+                                                        <td className={`text-center px-2 py-2.5 text-xs font-medium hidden md:table-cell ${score.personalization >= 7 ? 'text-emerald-600' : score.personalization >= 5 ? 'text-amber-600' : 'text-red-600'}`}>{score.personalization}</td>
+                                                        <td className={`text-center px-2 py-2.5 text-xs font-medium hidden md:table-cell ${score.supportive_listening >= 7 ? 'text-emerald-600' : score.supportive_listening >= 5 ? 'text-amber-600' : 'text-red-600'}`}>{score.supportive_listening}</td>
+                                                        <td className={`text-center px-2 py-2.5 text-xs font-medium hidden md:table-cell ${score.rapport >= 7 ? 'text-emerald-600' : score.rapport >= 5 ? 'text-amber-600' : 'text-red-600'}`}>{score.rapport}</td>
+                                                        <td className="px-2 py-2.5">
+                                                            <p className="text-[10px] text-slate-500 truncate max-w-[200px]" title={score.improvements?.[0] || 'None'}>
+                                                                {score.improvements?.[0] || '—'}
+                                                            </p>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        {/* Dialog Footer */}
+                        <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+                            <p className="text-[10px] text-slate-400">Analysis by DeepSeek V4 Flash • Scores cached for 24h</p>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => {
+                                    setShowFriendshipDialog(false);
+                                    handleCalculateFriendshipScores();
+                                }} className="px-3 py-1.5 text-xs font-medium text-pink-600 hover:text-pink-700 hover:bg-pink-50 rounded-lg transition-colors">
+                                    ↻ Re-analyze All
+                                </button>
+                                <button onClick={() => setShowFriendshipDialog(false)} className="px-4 py-1.5 text-xs font-medium bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors">
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        })()}
+        </>
     );
 }
 

@@ -18,10 +18,12 @@ import {
 
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const ZAI_API_KEY = process.env.ZAI_API_KEY || '';
 const HF_API_KEY = process.env.HF_API_KEY || '';
 const API_TIMEOUT = 120000; // 2 minutes
 
-// Choose API: DeepSeek (primary, cheap, fast) -> Groq (fallback, free)
+// Choose API priority: DeepSeek (primary) -> Groq (fallback, free)
+const USE_ZAI = false; // Z.AI disabled - using DeepSeek only
 const USE_DEEPSEEK = DEEPSEEK_API_KEY && DEEPSEEK_API_KEY !== 'your_deepseek_api_key_here';
 const USE_HF = false; // Hugging Face disabled - models not available on free inference API
 
@@ -40,6 +42,61 @@ async function callAIAPI(prompt: string, systemPrompt: string = 'You are an expe
   console.log('   ├─ GROQ_API_KEY:', GROQ_API_KEY ? '✅ SET' : '❌ NOT SET');
   console.log('   └─ Prompt length:', prompt.length, 'characters');
   console.log('─'.repeat(40));
+
+  // PRIMARY: DeepSeek V4 Flash (fast, cheap, great reasoning)
+  if (false) { // Z.AI disabled
+    const zaiStartTime = Date.now();
+    try {
+      console.log('\n🟢 [Z.AI] Sending request...');
+      console.log('   ├─ Model: glm-4.7-flash (FREE)');
+      console.log('   ├─ Max tokens: 2048');
+      console.log('   └─ Temperature: 0.3');
+
+      const response = await axios.post(
+        'https://api.z.ai/api/coding/paas/v4/chat/completions',
+        {
+          model: 'glm-4.7-flash',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.3,
+          max_tokens: 2048,
+          response_format: { type: 'json_object' }
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${ZAI_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: API_TIMEOUT
+        }
+      );
+
+      const content = response.data.choices[0].message.content;
+      const zaiDuration = ((Date.now() - zaiStartTime) / 1000).toFixed(2);
+
+      console.log('\n✅ [Z.AI] SUCCESS!');
+      console.log('   ├─ Response length:', content?.length || 0, 'characters');
+      console.log('   ├─ Duration:', zaiDuration, 'seconds');
+      console.log('   └─ Preview:', content?.substring(0, 100) || 'No content', '...');
+      console.log('─'.repeat(40) + '\n');
+
+      return content;
+    } catch (zaiError) {
+      const zaiDuration = ((Date.now() - zaiStartTime) / 1000).toFixed(2);
+      console.error('\n❌ [Z.AI] FAILED!');
+      console.error('   ├─ Duration:', zaiDuration, 'seconds');
+      console.error('   ├─ Error:', zaiError instanceof Error ? zaiError.message : String(zaiError));
+      if (axios.isAxiosError(zaiError)) {
+        console.error('   ├─ Status:', zaiError.response?.status || 'No response');
+        console.error('   └─ Data:', zaiError.response?.data ? JSON.stringify(zaiError.response.data).substring(0, 200) : 'N/A');
+      }
+      console.error('   ⬇️  Falling back to DeepSeek API...');
+      console.log('─'.repeat(40));
+      // Fall through to DeepSeek
+    }
+  }
 
   // PRIMARY: DeepSeek V4 Flash (fast, cheap, great reasoning)
   if (USE_DEEPSEEK) {
@@ -97,7 +154,7 @@ async function callAIAPI(prompt: string, systemPrompt: string = 'You are an expe
     }
   }
 
-  // FALLBACK: Groq API (free tier with rate limits)
+  // SECONDARY: Groq API (free tier with rate limits)
   const maxRetries = 3;
   let retryCount = 0;
 
@@ -256,6 +313,63 @@ async function callGroqDirect(prompt: string, systemPrompt: string = 'You are an
 }
 
 /**
+ * Call Z.AI API directly (for real-time friendship analysis)
+ * Uses GLM-4.7 Flash - FREE, fast, good reasoning
+ */
+async function callZaiDirect(prompt: string, systemPrompt: string = 'You are an expert AI analyst.'): Promise<string> {
+  console.log('\n' + '─'.repeat(40));
+  console.log('🟢 [Z.AI DIRECT] Real-time analysis');
+  console.log('   ├─ Model: glm-4.7-flash (FREE)');
+  console.log('   ├─ Max tokens: 2048');
+  console.log('   └─ Temperature: 0.3');
+  console.log('─'.repeat(40));
+
+  const startTime = Date.now();
+  try {
+    const response = await axios.post(
+      'https://api.z.ai/api/coding/paas/v4/chat/completions',
+      {
+        model: 'glm-4.7-flash',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 2048,
+        response_format: { type: 'json_object' }
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${ZAI_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: API_TIMEOUT
+      }
+    );
+
+    const content = response.data.choices[0].message.content;
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+
+    console.log('\n✅ [Z.AI DIRECT] SUCCESS!');
+    console.log('   ├─ Response length:', content?.length || 0, 'characters');
+    console.log('   ├─ Duration:', duration, 'seconds');
+    console.log('   └─ Preview:', content?.substring(0, 100) || 'No content', '...');
+    console.log('─'.repeat(40) + '\n');
+
+    return content;
+  } catch (error) {
+    console.error('\n❌ [Z.AI DIRECT] FAILED!');
+    console.error('   ├─ Duration:', ((Date.now() - startTime) / 1000).toFixed(2), 'seconds');
+    console.error('   ├─ Error:', error instanceof Error ? error.message : String(error));
+    if (axios.isAxiosError(error)) {
+      console.error('   ├─ Status:', error.response?.status || 'No response');
+    }
+    console.error('─'.repeat(40) + '\n');
+    throw error;
+  }
+}
+
+/**
  * Call DeepSeek API directly (for batch friendship analysis)
  * Always uses DeepSeek V4 Flash (fast, cheap, great reasoning)
  */
@@ -303,6 +417,8 @@ async function callDeepSeekDirect(prompt: string, systemPrompt: string = 'You ar
     console.error('   ├─ Error:', error instanceof Error ? error.message : String(error));
     if (axios.isAxiosError(error)) {
       console.error('   ├─ Status:', error.response?.status || 'No response');
+      console.error('   ├─ Status Text:', error.response?.statusText || 'N/A');
+      console.error('   └─ Data:', error.response?.data ? JSON.stringify(error.response.data) : 'N/A');
     }
     console.error('─'.repeat(40) + '\n');
     throw error;
@@ -1108,9 +1224,26 @@ INSTRUCTIONS:
 
 Provide the friendship positioning score as JSON only.`;
 
-    // Call AI API - Use Groq directly for single user analysis (last 20 messages)
-    console.log('📡 [API] Sending request to Groq for single user analysis...');
-    const result = await callGroqDirect(prompt, systemPrompt);
+    // Call AI API - Priority: DeepSeek (primary) -> Z.AI -> Groq (fallback)
+    console.log('📡 [API] Sending request for single user analysis...');
+    let result: string;
+
+    // Try DeepSeek first (primary - fast, cheap, great reasoning)
+    if (USE_DEEPSEEK) {
+      try {
+        console.log('   └─ Provider: DeepSeek V4 Flash (primary)');
+        result = await callDeepSeekDirect(prompt, systemPrompt);
+      } catch (deepseekError) {
+        console.warn('   ⚠️  DeepSeek failed, falling back to Groq...');
+        result = await callGroqDirect(prompt, systemPrompt);
+      }
+    } else if (USE_ZAI) {
+      console.log('   └─ Provider: Z.AI GLM-4.7 Flash (secondary)');
+      result = await callZaiDirect(prompt, systemPrompt);
+    } else {
+      console.log('   └─ Provider: Groq Llama 3.1 (fallback)');
+      result = await callGroqDirect(prompt, systemPrompt);
+    }
 
     // Parse and validate response
     console.log('📄 [PARSING] Parsing AI response...');
@@ -1203,9 +1336,9 @@ export async function batchAnalyzeFriendshipPositioning(
     totalMessages += msgs.length;
   }
   console.log('📨 [INPUT] Total messages across all users:', totalMessages);
-  console.log('⚙️  [CONFIG] Primary API: DeepSeek V4 Flash (cheap, fast, great reasoning)');
+  console.log('⚙️  [CONFIG] Primary API:', USE_ZAI ? 'Z.AI GLM-4.7 Flash (FREE)' : 'DeepSeek V4 Flash (cheap, fast)');
   console.log('⚙️  [CONFIG] Fallback API: Groq Llama 3.1 (free tier, rate limited)');
-  console.log('⚙️  [CONFIG] Rate limit delay: 5000ms between users (5s)');
+  console.log('⚙️  [CONFIG] Rate limit delay:', USE_ZAI ? '2000ms between users (2s)' : '5000ms between users (5s)');
   console.log('⚙️  [CONFIG] Messages per user: 20 (truncated to 200 chars each)');
   console.log('⚙️  [CONFIG] Retry attempts: 3 (with exponential backoff)');
   console.log('═'.repeat(60) + '\n');
@@ -1264,8 +1397,13 @@ ${recentMessages.map((m) => {
 
 Provide the friendship positioning score as JSON only.`;
 
-      // Use DeepSeek for batch (faster, cheaper)
-      const result = await callDeepSeekDirect(prompt, systemPrompt);
+      // Use Z.AI (FREE) for batch, fallback to DeepSeek
+      let result: string;
+      if (USE_ZAI) {
+        result = await callZaiDirect(prompt, systemPrompt);
+      } else {
+        result = await callDeepSeekDirect(prompt, systemPrompt);
+      }
       const parsed = safeJSONParse(result, getDefaultFriendshipScore());
 
       // Clamp scores to 1-10 range
@@ -1293,10 +1431,11 @@ Provide the friendship positioning score as JSON only.`;
         console.log(`   ⚠️  Failed or default score`);
       }
 
-      // Add delay to respect rate limits (5 seconds between users)
-      // Groq free tier: 6000 TPM, so we need to pace requests
+      // Add delay to respect rate limits
+      // Z.AI: 2s delay (generous limits), DeepSeek/Groq: 5s delay
       if (i < userIds.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        const delayMs = USE_ZAI ? 2000 : 5000;
+        await new Promise(resolve => setTimeout(resolve, delayMs));
       }
     } catch (error) {
       failureCount++;
