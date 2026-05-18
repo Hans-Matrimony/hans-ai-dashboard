@@ -190,6 +190,83 @@ const STOP_WORDS = new Set([
     'tell', 'know', 'want', 'batao', 'bataiye', 'bataye', 'haan', 'hmm',
 ]);
 
+/* ──────── Topic Keywords Mapping ──────── */
+const TOPIC_KEYWORDS: Record<string, string[]> = {
+    'Shaadi': ['shaadi', 'marriage', 'vivah', 'wedding', 'bride', 'groom', 'larki', 'larka', 'rishta', 'matchmaking', 'partner', 'spouse', 'life partner', 'bihari', 'marriage bureau'],
+    'Career': ['career', 'job', 'naukri', 'business', 'kamai', 'salary', 'income', 'profession', 'work', 'office', 'employment', 'promotion', 'interview', 'resume'],
+    'Love': ['love', 'pyar', 'relationship', 'breakup', 'crush', 'girlfriend', 'boyfriend', 'gf', 'bf', 'ex', 'dating', 'affair'],
+    'Health': ['health', 'health', 'disease', 'bimari', 'treatment', 'medicine', 'doctor', 'hospital', 'illness', 'symptom', 'fitness', 'diet'],
+    'Education': ['education', 'study', 'padhai', 'school', 'college', 'university', 'exam', 'result', 'degree', 'course', 'learning', 'student'],
+    'Finance': ['money', 'paisa', 'finance', 'investment', 'sip', 'stock', 'share', 'mutual fund', 'saving', 'loan', 'emi', 'bank'],
+    'Family': ['family', 'ghar', 'parents', 'mother', 'father', 'mummy', 'papa', 'mom', 'dad', 'brother', 'sister', 'beti', 'beta', 'bacche'],
+    'Astrology': ['astrology', 'kundali', 'horoscope', 'rashi', 'zodiac', 'chart', 'planets', 'stars', 'prediction', 'kundli', 'bhavishya'],
+    'Legal': ['court', 'kacheri', 'case', 'lawyer', 'legal', 'advocate', 'fir', 'police', 'justice', 'judgment'],
+    'Property': ['property', 'jameen', 'makkan', 'house', 'flat', 'land', 'real estate', 'rent', 'buy', 'sell'],
+};
+
+/* ──────── Extract topics from user messages ──────── */
+function extractUserTopics(user: UserDoc): string[] {
+    const topicScores: Record<string, number> = {};
+
+    // Collect all user messages
+    for (const session of user.sessions) {
+        for (const message of session.messages) {
+            if (message.role !== 'user') continue;
+
+            const text = message.text.toLowerCase();
+            const words = text.replace(/[^a-zA-Z0-9ऀ-ॿ\s]/g, '').split(/\s+/);
+
+            // Score each topic based on keyword matches
+            for (const [topic, keywords] of Object.entries(TOPIC_KEYWORDS)) {
+                for (const keyword of keywords) {
+                    if (text.includes(keyword.toLowerCase())) {
+                        topicScores[topic] = (topicScores[topic] || 0) + 1;
+                    }
+                }
+            }
+        }
+    }
+
+    // Return top 3 topics sorted by score
+    return Object.entries(topicScores)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([topic]) => topic);
+}
+
+/* ──────── Topic badge colors ──────── */
+function getTopicBadgeColor(topic: string): string {
+    const colors: Record<string, string> = {
+        'Shaadi': 'bg-pink-50 text-pink-700 border-pink-200',
+        'Career': 'bg-blue-50 text-blue-700 border-blue-200',
+        'Love': 'bg-red-50 text-red-700 border-red-200',
+        'Health': 'bg-green-50 text-green-700 border-green-200',
+        'Education': 'bg-indigo-50 text-indigo-700 border-indigo-200',
+        'Finance': 'bg-amber-50 text-amber-700 border-amber-200',
+        'Family': 'bg-purple-50 text-purple-700 border-purple-200',
+        'Astrology': 'bg-violet-50 text-violet-700 border-violet-200',
+        'Legal': 'bg-slate-50 text-slate-700 border-slate-200',
+        'Property': 'bg-orange-50 text-orange-700 border-orange-200',
+    };
+    return colors[topic] || 'bg-slate-50 text-slate-600 border-slate-200';
+}
+
+function getTopicIcon(topic: string): string {
+    const icons: Record<string, string> = {
+        'Shaadi': '💍',
+        'Career': '💼',
+        'Love': '❤️',
+        'Health': '🏥',
+        'Education': '📚',
+        'Finance': '💰',
+        'Family': '👨‍👩‍👧‍👦',
+        'Astrology': '🔮',
+        'Legal': '⚖️',
+        'Property': '🏠',
+    };
+    return icons[topic] || '📌';
+}
+
 /* ──────── Main Page ──────── */
 function ChatLogsContent() {
     const [data, setData] = useState<ApiResponse | null>(null);
@@ -271,6 +348,9 @@ function ChatLogsContent() {
 
     // Friendship detail dialog state
     const [showFriendshipDialog, setShowFriendshipDialog] = useState(false);
+
+    // Topics statistics dialog state
+    const [showTopicsDialog, setShowTopicsDialog] = useState(false);
 
     // subscriptions state for paid/unpaid tags
     const [subscriptions, setSubscriptions] = useState<Map<string, 'active' | 'expired' | 'cancelled' | 'trial' | 'pending'>>(new Map());
@@ -415,11 +495,69 @@ function ChatLogsContent() {
             });
     }, [startDate, endDate]);
 
+    // Cache topics for each user
+    const userTopics = useMemo(() => {
+        if (!data) return new Map<string, string[]>();
+        const topicsMap = new Map<string, string[]>();
+        for (const user of data.users) {
+            const topics = extractUserTopics(user);
+            if (topics.length > 0) {
+                topicsMap.set(user.userId, topics);
+            }
+        }
+        return topicsMap;
+    }, [data]);
+
+    // Compute trending topics across all users with frequencies
+    const trendingTopics = useMemo(() => {
+        if (!data) return [];
+        const topicFreq: Record<string, { count: number; users: Set<string> }> = {};
+
+        for (const user of data.users) {
+            for (const session of user.sessions) {
+                for (const message of session.messages) {
+                    if (message.role !== 'user') continue;
+
+                    const text = message.text.toLowerCase();
+
+                    // Score each topic based on keyword matches
+                    for (const [topic, keywords] of Object.entries(TOPIC_KEYWORDS)) {
+                        for (const keyword of keywords) {
+                            if (text.includes(keyword.toLowerCase())) {
+                                if (!topicFreq[topic]) {
+                                    topicFreq[topic] = { count: 0, users: new Set() };
+                                }
+                                topicFreq[topic].count++;
+                                topicFreq[topic].users.add(user.userId);
+                                break; // Count each topic once per message
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Convert to array and sort by frequency
+        return Object.entries(topicFreq)
+            .map(([topic, data]) => ({
+                topic,
+                frequency: data.count,
+                uniqueUsers: data.users.size
+            }))
+            .sort((a, b) => b.frequency - a.frequency);
+    }, [data]);
+
     // Selection derivations
     const selectedUser = useMemo(() => {
         if (!data || !selectedUserId) return null;
-        return data.users.find(u => u.userId === selectedUserId) || null;
-    }, [data, selectedUserId]);
+        const user = data.users.find(u => u.userId === selectedUserId) || null;
+        if (!user) return null;
+
+        // Apply date filter to selected user's messages - use UTC dates
+        const start = startDate ? createDateFromYYYYMMDD(startDate) : null;
+        const end = endDate ? createDateFromYYYYMMDD(endDate) : null;
+        return filterMessagesByDateRange(user, start, end);
+    }, [data, selectedUserId, startDate, endDate]);
 
     const selectedSession = useMemo(() => {
         if (!selectedUser || !selectedSessionId) return null;
@@ -740,6 +878,13 @@ useEffect(() => {
         if (!data) return [];
         let users = data.users;
 
+        // date range filter - use UTC dates
+        const start = startDate ? createDateFromYYYYMMDD(startDate) : null;
+        const end = endDate ? createDateFromYYYYMMDD(endDate) : null;
+        if (start || end) {
+            users = users.filter(u => isUserActiveInDateRange(u, start, end));
+        }
+
         // time filter
         if (timeFilter !== 'all') {
             users = users.filter(u => isUserActiveInPeriod(u, timeFilter));
@@ -782,7 +927,7 @@ useEffect(() => {
         });
 
         return users;
-    }, [data, search, channelFilter, timeFilter, subscriptionFilter, getSubscriptionStatus]);
+    }, [data, search, channelFilter, timeFilter, subscriptionFilter, getSubscriptionStatus, startDate, endDate]);
 
     // Calculate filtered paid/unpaid counts (based on current filter)
     const filteredPaidUnpaidStats = useMemo(() => {
@@ -839,24 +984,83 @@ useEffect(() => {
         const diff = Date.now() - new Date(lastMsg).getTime();
         return diff < 5 * 60 * 1000; // 5 minutes
     }
-    // check if user was active within the selected date range (excludes system messages)
-function isUserActiveInDateRange(u: UserDoc): boolean {
-    const start = startDate ? new Date(startDate) : null;
-    const end = endDate ? new Date(endDate) : null;
-    if (end) end.setHours(23, 59, 59, 999);
+    // Helper function to create a UTC date from YYYY-MM-DD string
+    function createDateFromYYYYMMDD(dateStr: string): Date {
+        // Parse YYYY-MM-DD as UTC midnight
+        const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!match) return new Date(dateStr);
 
-    // Use latestActivity() which excludes system messages (proactive_nudge, daily_horoscope)
-    const lastRealActivity = latestActivity(u);
-    if (!lastRealActivity) return false;
+        const [, year, month, day] = match;
+        // Create date in UTC (month is 0-indexed in JS)
+        return new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day), 0, 0, 0, 0));
+    }
 
-    const activityTime = new Date(lastRealActivity);
+    // check if user was active within the selected date range (checks ANY message in range)
+    function isUserActiveInDateRange(u: UserDoc, start: Date | null, end: Date | null): boolean {
+        // Create end of day for end date
+        const endOfDay = end ? new Date(end) : null;
+        if (endOfDay) {
+            endOfDay.setUTCHours(23, 59, 59, 999);
+        }
 
-    // Check if the last real activity falls within the date range
-    if (start && activityTime < start) return false;
-    if (end && activityTime > end) return false;
+        // Check if user has ANY messages within the date range
+        for (const session of u.sessions) {
+            for (const message of session.messages) {
+                const msgTime = new Date(message.timestamp);
 
-    return true;
-}
+                // Check if this message falls within the date range
+                if (start && msgTime < start) {
+                    continue; // Before start date
+                }
+                if (endOfDay && msgTime > endOfDay) {
+                    continue; // After end date
+                }
+
+                // If we get here, this message is in range
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Filter messages/sessions by date range
+    function filterMessagesByDateRange(u: UserDoc, start: Date | null, end: Date | null): UserDoc {
+        if (!start && !end) return u;
+
+        const filteredSessions: Session[] = [];
+        const endOfDay = end ? new Date(end) : null;
+        if (endOfDay) {
+            endOfDay.setUTCHours(23, 59, 59, 999);
+        }
+
+        for (const session of u.sessions) {
+            const filteredMessages: Message[] = [];
+
+            for (const message of session.messages) {
+                const msgTime = new Date(message.timestamp);
+
+                // Check if this message falls within the date range
+                if (start && msgTime < start) continue; // Before start date
+                if (endOfDay && msgTime > endOfDay) continue; // After end date
+
+                filteredMessages.push(message);
+            }
+
+            // Only include session if it has messages in range
+            if (filteredMessages.length > 0) {
+                filteredSessions.push({
+                    ...session,
+                    messages: filteredMessages
+                });
+            }
+        }
+
+        return {
+            ...u,
+            sessions: filteredSessions
+        };
+    }
 
 
     // check if user is active within a specific time period
@@ -895,9 +1099,11 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
         const totalSessions = allSessions.length;
         const totalMsgs = allMessages.length;
 
-        // Active users (within last 5 minutes)
-       const activeUsersCount = (startDate || endDate)
-    ? users.filter(u => isUserActiveInDateRange(u)).length
+        // Active users (within selected date range or last 5 minutes) - use UTC dates
+        const dateRangeStart = startDate ? createDateFromYYYYMMDD(startDate) : null;
+        const dateRangeEnd = endDate ? createDateFromYYYYMMDD(endDate) : null;
+        const activeUsersCount = (startDate || endDate)
+    ? users.filter(u => isUserActiveInDateRange(u, dateRangeStart, dateRangeEnd)).length
     : users.filter(u => isUserActive(u)).length;
         
         // Average session duration
@@ -1445,24 +1651,28 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                                 </div>
                             </div>
 
-                            {/* Common Topics */}
-                            <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-tight">Topics</span>
+                            {/* Trending Topics */}
+                            <div
+                                onClick={() => setShowTopicsDialog(true)}
+                                className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm cursor-pointer hover:border-indigo-300 hover:shadow-md transition-all"
+                            >
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-tight">📊 Trending Topics</span>
+                                    <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                    </svg>
                                 </div>
-                                <div className="flex flex-wrap gap-1">
-                                    {analytics.topTopics.length > 0 ? (
-                                        analytics.topTopics.slice(0, 8).map(([word, freq], i) => (
-                                            <span
-                                                key={word}
-                                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium bg-slate-50 text-slate-600 border-slate-100`}
-                                            >
-                                                {word}
-                                                <span className="opacity-50">×{freq}</span>
-                                            </span>
+                                <div className="space-y-1.5">
+                                    {trendingTopics.length > 0 ? (
+                                        trendingTopics.slice(0, 4).map((item, i) => (
+                                            <div key={item.topic} className="flex items-center gap-2 text-[10px]">
+                                                <span className="text-lg">{getTopicIcon(item.topic)}</span>
+                                                <span className="font-medium text-slate-700 flex-1">{item.topic}</span>
+                                                <span className="text-slate-400 font-medium">×{item.frequency}</span>
+                                            </div>
                                         ))
                                     ) : (
-                                        <p className="text-[10px] text-slate-400">No data</p>
+                                        <p className="text-[10px] text-slate-400">No topics detected</p>
                                     )}
                                 </div>
                             </div>
@@ -1683,6 +1893,23 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                                                         <p className="text-sm font-semibold text-slate-800 truncate">{user.userId}</p>
                                                         {getPaidUnpaidBadge(subscriptionStatus)}
                                                     </div>
+                                                    {/* Topic Tags */}
+                                                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                                        {(() => {
+                                                            const topics = userTopics.get(user.userId);
+                                                            if (topics && topics.length > 0) {
+                                                                return topics.slice(0, 3).map(topic => (
+                                                                    <span
+                                                                        key={topic}
+                                                                        className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full border ${getTopicBadgeColor(topic)}`}
+                                                                    >
+                                                                        {getTopicIcon(topic)} {topic}
+                                                                    </span>
+                                                                ));
+                                                            }
+                                                            return null;
+                                                        })()}
+                                                    </div>
                                                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                                                         {/* Channel badge */}
                                                         <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border ${channelColor(user.sessions[0]?.channel)}`}>
@@ -1760,6 +1987,27 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                                                         );
                                                     }
                                                     return null;
+                                                })()}
+                                            </div>
+                                            {/* User Topics in Detail View */}
+                                            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                                {(() => {
+                                                    const topics = userTopics.get(selectedUser.userId);
+                                                    if (topics && topics.length > 0) {
+                                                        return topics.slice(0, 5).map(topic => (
+                                                            <span
+                                                                key={topic}
+                                                                className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full border ${getTopicBadgeColor(topic)}`}
+                                                            >
+                                                                {getTopicIcon(topic)} {topic}
+                                                            </span>
+                                                        ));
+                                                    }
+                                                    return (
+                                                        <span className="text-[10px] text-slate-400 italic">
+                                                            No topics detected
+                                                        </span>
+                                                    );
                                                 })()}
                                             </div>
                                             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
@@ -2304,6 +2552,160 @@ function isUserActiveInDateRange(u: UserDoc): boolean {
                                     Close
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        })()}
+
+        {/* Topics Statistics Dialog */}
+        {showTopicsDialog && (() => {
+            const totalMentions = trendingTopics.reduce((sum, t) => sum + t.frequency, 0);
+            const totalUsers = data?.users.length || 0;
+            const avgUsersPerTopic = trendingTopics.length > 0
+                ? Math.round(trendingTopics.reduce((sum, t) => sum + t.uniqueUsers, 0) / trendingTopics.length)
+                : 0;
+
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowTopicsDialog(false); }}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
+                        {/* Dialog Header */}
+                        <div className="px-6 py-4 bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-indigo-200 flex items-center justify-between shrink-0">
+                            <div>
+                                <h2 className="text-lg font-bold text-indigo-900">📊 Trending Topics Analytics</h2>
+                                <p className="text-xs text-indigo-600 mt-0.5">Most discussed topics across all user conversations</p>
+                            </div>
+                            <button onClick={() => setShowTopicsDialog(false)} className="p-2 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        {/* Dialog Body */}
+                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+
+                            {/* Summary Stats Row */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div className="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-200 rounded-xl p-4 text-center">
+                                    <p className="text-3xl font-black text-indigo-600">{trendingTopics.length}</p>
+                                    <p className="text-xs text-indigo-500 font-medium mt-1">Active Topics</p>
+                                </div>
+                                <div className="bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200 rounded-xl p-4 text-center">
+                                    <p className="text-3xl font-black text-purple-600">{totalMentions}</p>
+                                    <p className="text-xs text-purple-500 font-medium mt-1">Total Mentions</p>
+                                </div>
+                                <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-200 rounded-xl p-4 text-center">
+                                    <p className="text-3xl font-black text-blue-600">{avgUsersPerTopic}</p>
+                                    <p className="text-xs text-blue-500 font-medium mt-1">Avg Users/Topic</p>
+                                </div>
+                            </div>
+
+                            {/* Topics Table */}
+                            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                                <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+                                    <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                                        🔥 Topics Breakdown
+                                        <span className="text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full">{trendingTopics.length} topics</span>
+                                    </h3>
+                                </div>
+                                <div className="max-h-[400px] overflow-y-auto">
+                                    <table className="w-full">
+                                        <thead className="sticky top-0 bg-slate-50">
+                                            <tr className="text-[10px] text-slate-500 uppercase tracking-wider">
+                                                <th className="text-left px-4 py-2 font-semibold">Rank</th>
+                                                <th className="text-left px-4 py-2 font-semibold">Topic</th>
+                                                <th className="text-center px-2 py-2 font-semibold">Mentions</th>
+                                                <th className="text-center px-2 py-2 font-semibold">Users</th>
+                                                <th className="text-left px-4 py-2 font-semibold">% Users</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {trendingTopics.map((item, index) => {
+                                                const percentage = totalUsers > 0 ? ((item.uniqueUsers / totalUsers) * 100).toFixed(1) : '0.0';
+                                                const rankColor = index === 0 ? 'bg-amber-100 text-amber-700' :
+                                                    index === 1 ? 'bg-slate-200 text-slate-700' :
+                                                    index === 2 ? 'bg-orange-100 text-orange-700' :
+                                                    'bg-slate-100 text-slate-600';
+                                                return (
+                                                    <tr key={item.topic} className="hover:bg-slate-50 transition-colors">
+                                                        <td className="px-4 py-3">
+                                                            <span className={`w-6 h-6 rounded-full inline-flex items-center justify-center text-xs font-bold ${rankColor}`}>
+                                                                {index + 1}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-xl">{getTopicIcon(item.topic)}</span>
+                                                                <span
+                                                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${getTopicBadgeColor(item.topic)}`}
+                                                                >
+                                                                    {item.topic}
+                                                                </span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="text-center px-2 py-3">
+                                                            <span className="text-sm font-bold text-slate-700">{item.frequency}</span>
+                                                        </td>
+                                                        <td className="text-center px-2 py-3">
+                                                            <span className="text-sm font-medium text-slate-600">{item.uniqueUsers}</span>
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                                                    <div
+                                                                        className={`h-full rounded-full ${parseFloat(percentage) >= 50 ? 'bg-indigo-500' : parseFloat(percentage) >= 25 ? 'bg-blue-400' : 'bg-slate-300'}`}
+                                                                        style={{ width: `${percentage}%` }}
+                                                                    />
+                                                                </div>
+                                                                <span className="text-[10px] text-slate-500">{percentage}%</span>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {/* Topic Distribution Visualization */}
+                            {trendingTopics.length > 0 && (
+                                <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                                    <h3 className="text-sm font-bold text-slate-700 mb-3">📈 Topic Distribution</h3>
+                                    <div className="space-y-2">
+                                        {trendingTopics.slice(0, 6).map((item) => {
+                                            const barWidth = totalMentions > 0 ? (item.frequency / totalMentions) * 100 : 0;
+                                            return (
+                                                <div key={item.topic} className="flex items-center gap-3">
+                                                    <span className="text-lg w-8 text-center">{getTopicIcon(item.topic)}</span>
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center justify-between mb-0.5">
+                                                            <span className="text-[10px] font-medium text-slate-700">{item.topic}</span>
+                                                            <span className="text-[9px] text-slate-500">{item.frequency} mentions ({((item.frequency / totalMentions) * 100).toFixed(1)}%)</span>
+                                                        </div>
+                                                        <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                                                            <div
+                                                                className={`h-full rounded-full transition-all ${getTopicBadgeColor(item.topic).split(' ')[0]} ${getTopicBadgeColor(item.topic).split(' ')[1]}`}
+                                                                style={{ width: `${barWidth}%` }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                        </div>
+
+                        {/* Dialog Footer */}
+                        <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+                            <p className="text-[10px] text-slate-400">Topics extracted from all user conversations</p>
+                            <button onClick={() => setShowTopicsDialog(false)} className="px-4 py-1.5 text-xs font-medium bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors">
+                                Close
+                            </button>
                         </div>
                     </div>
                 </div>

@@ -22,7 +22,9 @@ import {
   PieChart,
   Target,
   Zap,
-  GraduationCap
+  GraduationCap,
+  Calendar,
+  X
 } from 'lucide-react';
 import { ConversationAnalytics, DetailedAnalytics } from '@/lib/analytics-types';
 import { WorstResponsesPanel } from '@/components/analytics-training/WorstResponsesPanel';
@@ -31,9 +33,14 @@ import { TopicPerformancePanel } from '@/components/analytics-training/TopicPerf
 import { TrainingDataExport } from '@/components/analytics-training/TrainingDataExport';
 
 // Direct API calls
-async function getAnalytics() {
+async function getAnalytics(startDate?: string, endDate?: string) {
   try {
-    const response = await fetch('/api/chat-logs/analytics');
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    const queryString = params.toString();
+    const url = `/api/chat-logs/analytics${queryString ? `?${queryString}` : ''}`;
+    const response = await fetch(url);
     if (!response.ok) throw new Error('Failed to fetch analytics');
     return await response.json();
   } catch (error) {
@@ -42,9 +49,15 @@ async function getAnalytics() {
   }
 }
 
-async function getDetailedAnalytics() {
+async function getDetailedAnalytics(startDate?: string, endDate?: string) {
   try {
-    const response = await fetch('/api/chat-logs/analytics/detailed?limit=50');
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    params.append('limit', '50');
+    const queryString = params.toString();
+    const url = `/api/chat-logs/analytics/detailed${queryString ? `?${queryString}` : ''}`;
+    const response = await fetch(url);
     if (!response.ok) throw new Error('Failed to fetch detailed analytics');
     return await response.json();
   } catch (error) {
@@ -64,6 +77,11 @@ export default function ConversationAnalyticsPage() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [trainingLoading, setTrainingLoading] = useState(false);
 
+  // Date filter state
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+  const [showDateFilter, setShowDateFilter] = useState(false);
+
   useEffect(() => {
     fetchAnalytics();
   }, []);
@@ -77,7 +95,7 @@ export default function ConversationAnalyticsPage() {
     try {
       if (showLoading) setLoading(true);
       setError(null);
-      const data = await getAnalytics();
+      const data = await getAnalytics(startDate, endDate);
       setAnalytics(data);
     } catch (err) {
       console.error('Failed to fetch analytics:', err);
@@ -91,7 +109,7 @@ export default function ConversationAnalyticsPage() {
   const fetchDetailedAnalytics = async () => {
     try {
       setTrainingLoading(true);
-      const data = await getDetailedAnalytics();
+      const data = await getDetailedAnalytics(startDate, endDate);
       setDetailedAnalytics(data);
     } catch (err) {
       console.error('Failed to fetch detailed analytics:', err);
@@ -114,6 +132,25 @@ export default function ConversationAnalyticsPage() {
     if (tab === 'training' && !detailedAnalytics) {
       fetchDetailedAnalytics();
     }
+  };
+
+  const handleApplyDateFilter = () => {
+    fetchAnalytics(true);
+    if (activeTab === 'training') {
+      fetchDetailedAnalytics();
+    }
+  };
+
+  const handleClearDateFilter = () => {
+    setStartDate('');
+    setEndDate('');
+    // Fetch without date filters
+    setTimeout(() => {
+      fetchAnalytics(true);
+      if (activeTab === 'training') {
+        fetchDetailedAnalytics();
+      }
+    }, 0);
   };
 
   if (loading) {
@@ -204,6 +241,24 @@ export default function ConversationAnalyticsPage() {
                   </span>
                 )}
               </div>
+
+              {/* Date Filter Toggle */}
+              <Button
+                variant="secondary"
+                onClick={() => setShowDateFilter(!showDateFilter)}
+                className={`bg-white/80 backdrop-blur hover:bg-white border border-slate-200 shadow-lg hover:shadow-xl transition-all ${
+                  (startDate || endDate) ? 'ring-2 ring-indigo-500' : ''
+                }`}
+              >
+                <Calendar className="h-4 w-4 mr-2" />
+                Date Filter
+                {(startDate || endDate) && (
+                  <span className="ml-2 px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-xs">
+                    Active
+                  </span>
+                )}
+              </Button>
+
               <Button
                 variant="secondary"
                 onClick={handleRefresh}
@@ -215,6 +270,67 @@ export default function ConversationAnalyticsPage() {
               </Button>
             </div>
           </div>
+
+          {/* Date Filter Panel */}
+          {showDateFilter && (
+            <div className="bg-white/80 backdrop-blur rounded-2xl p-4 border border-slate-200 shadow-lg mb-6">
+              <div className="flex flex-col md:flex-row items-end gap-4">
+                <div className="flex-1 w-full">
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Start Date
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm"
+                  />
+                </div>
+                <div className="flex-1 w-full">
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    End Date
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleApplyDateFilter}
+                    className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700"
+                  >
+                    Apply Filter
+                  </Button>
+                  {(startDate || endDate) && (
+                    <Button
+                      variant="secondary"
+                      onClick={handleClearDateFilter}
+                      className="bg-white border border-slate-300 hover:bg-slate-50"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {(startDate || endDate) && (
+                <div className="mt-3 pt-3 border-t border-slate-200">
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <span className="font-medium">Active Filter:</span>
+                    <span className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded-lg">
+                      {startDate ? `From ${new Date(startDate).toLocaleString()}` : 'No start'}
+                    </span>
+                    <span>→</span>
+                    <span className="px-2 py-1 bg-purple-50 text-purple-700 rounded-lg">
+                      {endDate ? `To ${new Date(endDate).toLocaleString()}` : 'No end'}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Tab Switcher */}
           <div className="flex items-center gap-2 bg-white/80 backdrop-blur rounded-2xl p-2 border border-slate-200 shadow-lg">
