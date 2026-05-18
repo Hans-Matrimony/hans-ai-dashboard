@@ -1893,23 +1893,6 @@ useEffect(() => {
                                                         <p className="text-sm font-semibold text-slate-800 truncate">{user.userId}</p>
                                                         {getPaidUnpaidBadge(subscriptionStatus)}
                                                     </div>
-                                                    {/* Topic Tags */}
-                                                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                                                        {(() => {
-                                                            const topics = userTopics.get(user.userId);
-                                                            if (topics && topics.length > 0) {
-                                                                return topics.slice(0, 3).map(topic => (
-                                                                    <span
-                                                                        key={topic}
-                                                                        className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full border ${getTopicBadgeColor(topic)}`}
-                                                                    >
-                                                                        {getTopicIcon(topic)} {topic}
-                                                                    </span>
-                                                                ));
-                                                            }
-                                                            return null;
-                                                        })()}
-                                                    </div>
                                                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                                                         {/* Channel badge */}
                                                         <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border ${channelColor(user.sessions[0]?.channel)}`}>

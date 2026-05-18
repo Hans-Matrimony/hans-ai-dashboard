@@ -83,7 +83,7 @@ async function callAIAPI(prompt: string, systemPrompt: string = 'You are an expe
       console.log('─'.repeat(40) + '\n');
 
       return content;
-    } catch (zaiError) {
+    } catch (zaiError: any) {
       const zaiDuration = ((Date.now() - zaiStartTime) / 1000).toFixed(2);
       console.error('\n❌ [Z.AI] FAILED!');
       console.error('   ├─ Duration:', zaiDuration, 'seconds');
